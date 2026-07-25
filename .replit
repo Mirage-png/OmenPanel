@@ -15,7 +15,7 @@ externalPort = 3000
 exposeLocalhost = true
 
 [deployment]
-build = ["sh", "-c", "cd minecraft-server && for d in . mcsmanager/daemon mcsmanager/web middleware; do (cd \"$d\" && [ -f package.json ] && (npm ci --omit=dev --no-audit --no-fund || npm install --omit=dev --no-audit --no-fund)); done"]
+build = ["sh", "-c", "cd minecraft-server && for d in . mcsmanager/daemon mcsmanager/web middleware; do if [ -f \"$d/package.json\" ]; then (cd \"$d\" && (npm ci --omit=dev --no-audit --no-fund || npm install --omit=dev --no-audit --no-fund)); fi; done; true"]
 run = ["sh", "-c", "cd minecraft-server && bash deploy-start.sh"]
 deploymentTarget = "cloudrun"
 
