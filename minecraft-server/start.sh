@@ -29,10 +29,6 @@ install_if_needed() {
     (cd "$dir" && npm ci --omit=dev --no-audit --no-fund 2>&1 || npm install --omit=dev --no-audit --no-fund 2>&1) | tail -20
   fi
 }
-install_if_needed "$BASE_DIR"
-install_if_needed "$BASE_DIR/mcsmanager/daemon"
-install_if_needed "$BASE_DIR/mcsmanager/web"
-install_if_needed "$BASE_DIR/middleware"
 
 # Cleanup handler
 cleanup() {
@@ -76,7 +72,12 @@ restart_service() {
 
 echo "[1] Starting services..."
 restart_service router
-sleep 1
+
+install_if_needed "$BASE_DIR"
+install_if_needed "$BASE_DIR/mcsmanager/daemon"
+install_if_needed "$BASE_DIR/mcsmanager/web"
+install_if_needed "$BASE_DIR/middleware"
+
 restart_service mcsm-daemon
 sleep 3
 restart_service mcsm-web

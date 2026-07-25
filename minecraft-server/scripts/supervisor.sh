@@ -66,10 +66,6 @@ install_if_needed() {
     (cd "$dir" && npm ci --omit=dev --no-audit --no-fund 2>&1 || npm install --omit=dev --no-audit --no-fund 2>&1) | tail -20
   fi
 }
-install_if_needed "$BASE_DIR"
-install_if_needed "$BASE_DIR/mcsmanager/daemon"
-install_if_needed "$BASE_DIR/mcsmanager/web"
-install_if_needed "$BASE_DIR/middleware"
 
 # ── 1. Update RemoteServiceConfig ──────────────────────────────────
 echo "[1/5] Updating MCSManager daemon config..."
@@ -100,7 +96,11 @@ start_service() {
 
 echo "[2/5] Starting local router..."
 start_service router "$NODE_BIN" "$BASE_DIR/web/index.js"
-sleep 1
+
+install_if_needed "$BASE_DIR"
+install_if_needed "$BASE_DIR/mcsmanager/daemon"
+install_if_needed "$BASE_DIR/mcsmanager/web"
+install_if_needed "$BASE_DIR/middleware"
 
 echo "[3/5] Starting MCSManager daemon..."
 start_service mcsm-daemon bash -c "cd '$BASE_DIR/mcsmanager/daemon' && '$NODE_BIN' $NODE_FLAGS app.js"

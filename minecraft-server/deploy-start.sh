@@ -26,7 +26,12 @@ GC_FLAGS="--optimize-for-size --gc-interval=100 --max-semi-space-size=32"
 
 echo "Deploying OmenHosting..."
 
-# ── Install dependencies if missing (fresh clone has no node_modules) ──
+# ── Install dependencies if missing (fallback only — the [deployment].build
+# step in .replit should have already done this during build, not runtime).
+# Router has zero external deps (core `http`/`url` only) so it never waits
+# on this; daemon/web/middleware installs run in the background after the
+# router is already listening, so the platform health check on :3000 passes
+# immediately instead of timing out while npm installs ~250MB of packages.
 install_if_needed() {
   local dir="$1"
   if [ -f "$dir/package.json" ] && [ ! -d "$dir/node_modules" ]; then
@@ -34,10 +39,6 @@ install_if_needed() {
     (cd "$dir" && npm ci --omit=dev --no-audit --no-fund 2>&1 || npm install --omit=dev --no-audit --no-fund 2>&1) | tail -20
   fi
 }
-install_if_needed "$BASE_DIR"
-install_if_needed "$BASE_DIR/mcsmanager/daemon"
-install_if_needed "$BASE_DIR/mcsmanager/web"
-install_if_needed "$BASE_DIR/middleware"
 
 # ── Log rotation: truncate any log over 10MB so disk never fills ──────
 rotate_logs() {
@@ -61,11 +62,16 @@ start_service() {
   echo "  Started $name (PID $!)"
 }
 
-echo "[1/4] Starting router..."
+echo "[1/4] Starting router (no external deps — opens the health-checked port immediately)..."
 start_service router "$NODE" --max-old-space-size="$ROUTER_HEAP" "$BASE_DIR/web/index.js"
-sleep 1
 
-echo "[2/4] Starting MCSManager daemon..."
+echo "[2/4] Installing dependencies for daemon/web/middleware (if not already built)..."
+install_if_needed "$BASE_DIR"
+install_if_needed "$BASE_DIR/mcsmanager/daemon"
+install_if_needed "$BASE_DIR/mcsmanager/web"
+install_if_needed "$BASE_DIR/middleware"
+
+echo "[3/4] Starting MCSManager daemon..."
 start_service mcsm-daemon bash -c "cd '$BASE_DIR/mcsmanager/daemon' && exec '$NODE' --max-old-space-size=$DAEMON_HEAP $GC_FLAGS app.js"
 sleep 3
 
