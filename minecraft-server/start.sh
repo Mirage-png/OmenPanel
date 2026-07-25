@@ -85,6 +85,10 @@ install_if_needed "$BASE_DIR/middleware"
 
 restart_service mcsm-daemon
 sleep 3
+
+# Must run before mcsm-web starts — see middleware/bootstrap-admin.js.
+"$NODE" "$BASE_DIR/middleware/bootstrap-admin.js"
+
 restart_service mcsm-web
 sleep 2
 restart_service middleware

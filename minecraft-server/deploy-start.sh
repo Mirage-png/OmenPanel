@@ -85,6 +85,11 @@ echo "[3/4] Starting MCSManager daemon..."
 start_service mcsm-daemon bash -c "cd '$BASE_DIR/mcsmanager/daemon' && exec '$NODE' --max-old-space-size=$DAEMON_HEAP $GC_FLAGS app.js"
 sleep 3
 
+# Must run before mcsm-web starts — MCSManager loads its user list into
+# memory once at boot and never re-reads it, so a user created afterward
+# would be invisible until the next restart.
+"$NODE" "$BASE_DIR/middleware/bootstrap-admin.js"
+
 echo "[3/4] Starting MCSManager web panel..."
 start_service mcsm-web bash -c "cd '$BASE_DIR/mcsmanager/web' && exec '$NODE' --max-old-space-size=$WEB_HEAP $GC_FLAGS app.js"
 sleep 2

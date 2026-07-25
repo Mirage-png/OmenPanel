@@ -106,6 +106,9 @@ echo "[3/5] Starting MCSManager daemon..."
 start_service mcsm-daemon bash -c "cd '$BASE_DIR/mcsmanager/daemon' && '$NODE_BIN' $NODE_FLAGS app.js"
 sleep 3
 
+# Must run before mcsm-web starts — see middleware/bootstrap-admin.js.
+"$NODE_BIN" "$BASE_DIR/middleware/bootstrap-admin.js"
+
 echo "[4/5] Starting MCSManager web panel..."
 start_service mcsm-web bash -c "cd '$BASE_DIR/mcsmanager/web' && '$NODE_BIN' $NODE_FLAGS app.js"
 sleep 2
