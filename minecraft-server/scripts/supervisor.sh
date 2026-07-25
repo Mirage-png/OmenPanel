@@ -5,20 +5,22 @@
 set -u
 
 BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-NODE_BIN="$BASE_DIR/node-v20.11.0-linux-x64/bin/node"
-CLOUDFLARED_BIN="/tmp/cloudflared"
+NODE_BIN="$(command -v node)"
 PID_DIR="$BASE_DIR/.pids"
 LOG_DIR="$BASE_DIR/logs"
 STOP_FILE="$PID_DIR/.stop"
-TUNNEL_LOG="$LOG_DIR/cloudflared.log"
-TUNNEL_URL_FILE="$LOG_DIR/tunnel-url.txt"
-NODE_FLAGS="--max-old-space-size=1024 --optimize-for-size --gc-interval=100 --max-semi-space-size=64 --enable-source-maps"
-SERVICES="cloudflared router mcsm-daemon mcsm-web middleware"
+NODE_FLAGS="--max-old-space-size=512 --optimize-for-size --gc-interval=100 --max-semi-space-size=32"
+SERVICES="router mcsm-daemon mcsm-web middleware"
 
-export PATH="$BASE_DIR/node-v20.11.0-linux-x64/bin:$PATH"
 mkdir -p "$PID_DIR" "$LOG_DIR"
 
-# Determine Replit URL
+if [ -z "$NODE_BIN" ]; then
+  echo "[FATAL] node not found on PATH — check replit.nix packages" >&2
+  exit 1
+fi
+
+# Replit already exposes localPort 3000 on the workspace/deployment domain —
+# no separate tunnel needed.
 REPLIT_DOMAIN="${REPLIT_DOMAINS%%,*}"
 PUBLIC_URL="https://$REPLIT_DOMAIN"
 REMOTE_HOST="$REPLIT_DOMAIN"
@@ -54,40 +56,20 @@ trap '' SIGTERM SIGINT
 
 # ── Determine primary URL ───────────────────────────────────────────
 REMOTE_HOST="${REPLIT_DOMAINS%%,*}"
-# Will be overridden by tunnel URL if cloudflared starts
+TUNNEL_URL="https://$REMOTE_HOST"
 
-# ── 1. Start cloudflared (auto-restart loop) ────────────────────────
-echo "[1/5] Starting cloudflared tunnel..."
-rm -f "$TUNNEL_URL_FILE"
-TUNNEL_URL=""
-setsid bash -c '
-while true; do
-  /tmp/cloudflared tunnel --url http://127.0.0.1:3000 --no-autoupdate > '"$TUNNEL_LOG"' 2>&1
-  sleep 2
-done
-' > /dev/null 2>&1 &
-echo $! > "$PID_DIR/cloudflared.pid"
-
-echo "  Waiting for tunnel URL..."
-TRIES=0
-while [ $TRIES -lt 60 ] && [ ! -f "$STOP_FILE" ]; do
-  if [ -f "$TUNNEL_LOG" ]; then
-    TUNNEL_URL=$(grep -oP 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' "$TUNNEL_LOG" | head -1)
-    if [ -n "$TUNNEL_URL" ]; then
-      echo "$TUNNEL_URL" > "$TUNNEL_URL_FILE"
-      REMOTE_HOST=$(echo "$TUNNEL_URL" | sed 's|https://||')
-      break
-    fi
+# ── Install dependencies if missing (fresh clone has no node_modules) ──
+install_if_needed() {
+  local dir="$1"
+  if [ -f "$dir/package.json" ] && [ ! -d "$dir/node_modules" ]; then
+    echo "  Installing deps in ${dir#$BASE_DIR/}..."
+    (cd "$dir" && npm ci --omit=dev --no-audit --no-fund 2>&1 || npm install --omit=dev --no-audit --no-fund 2>&1) | tail -20
   fi
-  sleep 0.5; TRIES=$((TRIES + 1))
-done
-
-if [ -n "$TUNNEL_URL" ]; then
-  echo "  Tunnel URL: $TUNNEL_URL"
-else
-  echo "  [WARN] Tunnel not ready, using Replit URL"
-  TUNNEL_URL="https://$REMOTE_HOST"
-fi
+}
+install_if_needed "$BASE_DIR"
+install_if_needed "$BASE_DIR/mcsmanager/daemon"
+install_if_needed "$BASE_DIR/mcsmanager/web"
+install_if_needed "$BASE_DIR/middleware"
 
 # ── 1. Update RemoteServiceConfig ──────────────────────────────────
 echo "[1/5] Updating MCSManager daemon config..."
@@ -147,7 +129,7 @@ for name in $SERVICES; do
   fi
 done
 echo ""; echo "  Public URL:    $TUNNEL_URL"
-echo "  Web Panel:     $TUNNEL_URL  (login: admin / Admin123!)"
+echo "  Web Panel:     $TUNNEL_URL  (login with OMEN_ADMIN_USERNAME / OMEN_ADMIN_PASSWORD from Secrets)"
 echo "  Stop via: kill -SIGUSR1 $$"; echo ""
 
 # ── Monitor + auto-restart ────────────────────────────────────────
@@ -170,14 +152,6 @@ while [ ! -f "$STOP_FILE" ]; do
     RESTART_COUNTS[$name]=$((RESTART_COUNTS[$name] + 1))
 
     case "$name" in
-      cloudflared)
-        setsid bash -c '
-          while true; do
-            /tmp/cloudflared tunnel --url http://127.0.0.1:3000 --no-autoupdate > '"$TUNNEL_LOG"' 2>&1
-            sleep 2
-          done
-        ' > /dev/null 2>&1 &
-        echo $! > "$pidfile" ;;
       router)
         setsid "$NODE_BIN" "$BASE_DIR/web/index.js" > "$LOG_DIR/router.log" 2>&1 &
         echo $! > "$pidfile" ;;

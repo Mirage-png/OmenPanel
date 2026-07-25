@@ -3,7 +3,7 @@ entrypoint = "minecraft-server/start.sh"
 
 [[ports]]
 localPort = 3000
-externalPort = 3002
+externalPort = 80
 
 [[ports]]
 localPort = 23333

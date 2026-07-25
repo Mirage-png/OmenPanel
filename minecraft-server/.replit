@@ -1,9 +1,0 @@
-run = "node web/index.js"
-entrypoint = "web/index.js"
-
-[deployment]
-run = ["node", "web/index.js"]
-deploymentTarget = "cloudrun"
-
-[nix]
-channel = "stable-24_05"

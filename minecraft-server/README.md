@@ -210,7 +210,6 @@ minecraft-server/
 ├── mcsmanager/
 │   ├── daemon/              # MCSManager daemon
 │   └── web/                 # MCSManager web panel
-├── node-v20.11.0-linux-x64/ # Node.js runtime
 ├── logs/                    # Service logs
 ├── .pids/                   # Process ID files
 ├── mcsm.env                 # Environment config
