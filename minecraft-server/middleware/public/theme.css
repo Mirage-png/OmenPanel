@@ -1,0 +1,1443 @@
+/* ============================================================
+   OmenHosting — panel skin for MCSManager
+   Served from /api/omen/theme.css (cached, ETag'd)
+
+   Design notes:
+   - Palette is the OmenHosting brand spec (green on slate), 10–12px radii,
+     thin gray borders, subtle green glow on focus and selected items.
+   - Two spots in the spec conflict; resolved as: cards use #1F2937 (per the
+     "Overall Style" summary) and #374151 is the elevated surface, which is
+     how the spec itself uses it for Secondary buttons (hover #4B5563).
+   - No universal (*) selectors: those force a full style recalc on every
+     DOM mutation and flatten every surface. Everything below is scoped.
+   ============================================================ */
+
+:root,
+body.app-light-theme,
+body.app-dark-theme {
+  /* ---- Primary ---- */
+  --pt-primary-400: #22c55e;  /* Primary Green */
+  --pt-primary-500: #16a34a;  /* Primary Hover */
+  --pt-primary-300: #4ade80;  /* Bright Accent */
+  --pt-primary-600: #15803d;
+  --pt-accent-rgb: 34, 197, 94;
+
+  /* ---- Backgrounds ---- */
+  --pt-bg: #111827;           /* Main Background */
+  --pt-bg-2: #1f2937;         /* Secondary Background */
+  --pt-surface: #1f2937;      /* Cards */
+  --pt-surface-2: #273244;
+  --pt-elevate: #374151;      /* Elevated surface / Secondary button */
+  --pt-elevate-hover: #4b5563;
+  --pt-sidebar: #0f172a;      /* Sidebar */
+
+  /* ---- Grays ---- */
+  --pt-border: #4b5563;
+  --pt-border-soft: rgba(75, 85, 99, 0.55);
+  --pt-border-strong: #4b5563;
+  --pt-text: #f9fafb;         /* Primary Text */
+  --pt-text-2: #d1d5db;       /* Secondary Text */
+  --pt-muted: #9ca3af;        /* Muted Text */
+  --pt-faint: #9ca3af;
+
+  /* ---- Status ---- */
+  --pt-success: #10b981;
+  --pt-online: #22c55e;
+  --pt-starting: #eab308;
+  --pt-stopping: #f97316;
+  --pt-offline: #ef4444;
+  --pt-error: #dc2626;
+  --pt-error-hover: #b91c1c;
+  --pt-danger: #dc2626;
+  --pt-warn: #eab308;
+
+  /* ---- Shape & elevation ---- */
+  --pt-radius: 10px;
+  --pt-radius-lg: 12px;
+  --pt-glow: 0 0 0 3px rgba(var(--pt-accent-rgb), 0.2);
+  --pt-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.28);
+  --pt-shadow-lg: 0 10px 25px -5px rgba(0, 0, 0, 0.55), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
+
+  /* ---- Remap MCSManager's own tokens ---- */
+  --background-color: var(--pt-bg);
+  --background-color-white: var(--pt-surface);
+  --blue-background-color: var(--pt-bg);
+  --vscode-bg-color: var(--pt-surface);
+  --app-header-bg: rgba(15, 23, 42, 0.92);
+  --app-header-bg-extend: var(--pt-sidebar);
+  --app-header-text-color: var(--pt-text);
+  --text-color: var(--pt-text);
+  --card-border-color: var(--pt-border-soft);
+  --card-shadow-color: rgba(0, 0, 0, 0.4);
+  --card-shadow-extend-color: rgba(0, 0, 0, 0.55);
+  --card-bottom-background-color: rgba(17, 24, 39, 0.85);
+  --bottom-nav-background-color: var(--pt-surface);
+  --bottom-nav-background-color-hover: rgba(var(--pt-accent-rgb), 0.2);
+  --login-panel-bg: #1f2937;
+  --inner-card-hover-bg: linear-gradient(135deg, #273244 0%, #1f2937 100%);
+  --new-card-list-background-color: rgba(var(--pt-accent-rgb), 0.12);
+  --new-card-list-background-color-menu: rgba(31, 41, 55, 0.96);
+  --float-box-bg-color: rgba(31, 41, 55, 0.92);
+  --gray-border-color: var(--pt-border-soft);
+  --drag-background-color: var(--pt-elevate);
+  --level-0-bg-color: rgba(17, 24, 39, 0.92);
+  --level-1-bg-color: var(--pt-surface);
+  --primary-btn-color: var(--pt-primary-400);
+  --danger-btn-color: var(--pt-danger);
+
+  /* MCSManager routes its primary through the "blue" ramp — keep it green */
+  --color-blue-1: #052e16;
+  --color-blue-2: #064e3b;
+  --color-blue-3: #065f46;
+  --color-blue-4: #15803d;
+  --color-blue-5: var(--pt-primary-500);
+  --color-blue-6: var(--pt-primary-400);
+  --color-blue-7: var(--pt-primary-300);
+  --color-blue-8: #86efac;
+  --color-blue-9: #bbf7d0;
+  --color-blue-10: #dcfce7;
+  --color-primary: var(--pt-primary-400);
+  --color-success: var(--pt-success);
+  --color-danger: var(--pt-danger);
+  --color-warning: var(--pt-warn);
+
+  color-scheme: dark;
+}
+
+/* ---------- Base ---------- */
+html,
+body.app-light-theme,
+body.app-dark-theme {
+  background-color: var(--pt-bg);
+  color: var(--pt-text);
+  font-family: "Rubik", "IBM Plex Sans", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body.app-light-theme::before,
+body.app-dark-theme::before {
+  /* Subtle Pterodactyl-ish depth: radial glow, no external image request */
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(1100px 600px at 12% -10%, rgba(var(--pt-accent-rgb), 0.1), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, rgba(var(--pt-accent-rgb), 0.08), transparent 55%),
+    linear-gradient(180deg, #151d30 0%, var(--pt-bg) 45%, #0d1320 100%);
+}
+
+body.app-light-theme .global-app-container,
+body.app-dark-theme .global-app-container,
+body.app-light-theme .main-layout-container,
+body.app-dark-theme .main-layout-container,
+body.app-light-theme .main-content,
+body.app-dark-theme .main-content,
+body.app-light-theme .login-page-body,
+body.app-dark-theme .login-page-body,
+body.app-light-theme .login-page-container,
+body.app-dark-theme .login-page-container {
+  background: transparent;
+  color: var(--pt-text);
+}
+
+/* Typography */
+body.app-light-theme .app-light-theme h1,
+body.app-dark-theme .app-light-theme h1,
+body.app-light-theme .app-dark-theme h1,
+body.app-dark-theme .app-dark-theme h1,
+body.app-light-theme .app-light-theme h2,
+body.app-dark-theme .app-light-theme h2,
+body.app-light-theme .app-dark-theme h2,
+body.app-dark-theme .app-dark-theme h2,
+body.app-light-theme .app-light-theme h3,
+body.app-dark-theme .app-light-theme h3,
+body.app-light-theme .app-dark-theme h3,
+body.app-dark-theme .app-dark-theme h3,
+body.app-light-theme .app-light-theme h4,
+body.app-dark-theme .app-light-theme h4,
+body.app-light-theme .app-dark-theme h4,
+body.app-dark-theme .app-dark-theme h4 {
+  color: var(--pt-text);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+body.app-light-theme .ant-typography,
+body.app-dark-theme .ant-typography,
+body.app-light-theme .app-light-theme p,
+body.app-dark-theme .app-light-theme p,
+body.app-light-theme .app-dark-theme p,
+body.app-dark-theme .app-dark-theme p {
+  color: var(--pt-text-2) !important;
+}
+
+/* ---------- Top bar ---------- */
+body.app-light-theme .app-header-wrapper,
+body.app-dark-theme .app-header-wrapper {
+  background: var(--app-header-bg) !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--pt-border) !important;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
+}
+
+body.app-light-theme .app-header-content,
+body.app-dark-theme .app-header-content,
+body.app-light-theme .app-header-content-for-phone,
+body.app-dark-theme .app-header-content-for-phone {
+  color: var(--pt-text);
+}
+
+body.app-light-theme .nav-button,
+body.app-dark-theme .nav-button {
+  color: var(--pt-muted);
+  border-radius: var(--pt-radius);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+body.app-light-theme .nav-button:hover,
+body.app-dark-theme .nav-button:hover {
+  color: var(--pt-text);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+body.app-light-theme .logo,
+body.app-dark-theme .logo,
+body.app-light-theme .header-title,
+body.app-dark-theme .header-title {
+  color: var(--pt-text);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* ---------- Sidebar ---------- */
+body.app-light-theme .left-sidebar,
+body.app-dark-theme .left-sidebar,
+body.app-light-theme .left-menu,
+body.app-dark-theme .left-menu {
+  background: var(--pt-sidebar);
+  border-right: 1px solid var(--pt-border);
+}
+
+/* Selected menu item: green tint + subtle glow */
+body.app-light-theme .left-menu .active,
+body.app-dark-theme .left-menu .active,
+body.app-light-theme .left-sidebar .active,
+body.app-dark-theme .left-sidebar .active,
+body.app-light-theme .ant-menu-item-selected,
+body.app-dark-theme .ant-menu-item-selected {
+  background: rgba(var(--pt-accent-rgb), 0.14) !important;
+  color: var(--pt-primary-300) !important;
+  border-left: 2px solid var(--pt-primary-400);
+  box-shadow: var(--pt-glow);
+}
+
+/* ---------- Cards / panels ---------- */
+body.app-light-theme .card-panel,
+body.app-dark-theme .card-panel,
+body.app-light-theme .instance-card,
+body.app-dark-theme .instance-card,
+body.app-light-theme .layout-card-container,
+body.app-dark-theme .layout-card-container,
+body.app-light-theme .inner-card-wrapper,
+body.app-dark-theme .inner-card-wrapper,
+body.app-light-theme .content-box,
+body.app-dark-theme .content-box,
+body.app-light-theme .card-wrapper,
+body.app-dark-theme .card-wrapper,
+body.app-light-theme .global-card-container-shadow,
+body.app-dark-theme .global-card-container-shadow {
+  background: var(--pt-surface) !important;
+  border: 1px solid var(--pt-border) !important;
+  border-radius: var(--pt-radius) !important;
+  box-shadow: var(--pt-shadow) !important;
+  color: var(--pt-text);
+}
+
+body.app-light-theme .card-panel-title,
+body.app-dark-theme .card-panel-title,
+body.app-light-theme .card-title,
+body.app-dark-theme .card-title {
+  /* Pterodactyl's signature box header */
+  color: var(--pt-muted) !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  border-bottom: 1px solid var(--pt-border);
+}
+
+body.app-light-theme .layout-card-container:hover,
+body.app-dark-theme .layout-card-container:hover,
+body.app-light-theme .instance-card:hover,
+body.app-dark-theme .instance-card:hover {
+  border-color: var(--pt-border-strong) !important;
+  background: var(--pt-surface-2) !important;
+}
+
+body.app-light-theme .card-panel-content,
+body.app-dark-theme .card-panel-content {
+  color: var(--pt-text);
+}
+
+body.app-light-theme .ant-card,
+body.app-dark-theme .ant-card {
+  background: var(--pt-surface) !important;
+  border: 1px solid var(--pt-border) !important;
+  border-radius: var(--pt-radius);
+  color: var(--pt-text) !important;
+}
+
+body.app-light-theme .ant-card-head,
+body.app-dark-theme .ant-card-head {
+  background: transparent !important;
+  border-bottom: 1px solid var(--pt-border);
+  color: var(--pt-muted) !important;
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 0.09em;
+}
+
+body.app-light-theme .ant-card-head-title,
+body.app-dark-theme .ant-card-head-title,
+body.app-light-theme .ant-card-body,
+body.app-dark-theme .ant-card-body {
+  color: var(--pt-text) !important;
+}
+
+/* ---------- Login ---------- */
+/* Stock MCSManager frosts a translucent layer over the dashboard skeleton.
+   On a dark skin that reads as a muddy veil, and a fullscreen backdrop-filter
+   is a per-frame GPU cost. Pterodactyl's login is a card on flat dark, so this
+   goes fully opaque and the blur is dropped. */
+body.app-light-theme .login-page-container,
+body.app-dark-theme .login-page-container {
+  background:
+    radial-gradient(1100px 600px at 12% -10%, rgba(var(--pt-accent-rgb), 0.1), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, rgba(var(--pt-accent-rgb), 0.08), transparent 55%),
+    linear-gradient(180deg, #151d30 0%, #111827 45%, #0d1320 100%) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body.app-light-theme .login-panel,
+body.app-dark-theme .login-panel,
+body.app-light-theme .login-panel-body,
+body.app-dark-theme .login-panel-body {
+  background: var(--login-panel-bg) !important;
+  border: 1px solid var(--pt-border) !important;
+  border-radius: 6px !important;
+  box-shadow: var(--pt-shadow-lg) !important;
+  color: var(--pt-text);
+}
+
+/* .login-panel-body sits inside .login-panel — only the outer one is a card */
+body.app-light-theme .login-panel-body,
+body.app-dark-theme .login-panel-body {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Stock markup floats these into each other once the app is reskinned */
+body.app-light-theme .login-panel .btns,
+body.app-dark-theme .login-panel .btns,
+body.app-light-theme .login-panel-body .btns,
+body.app-dark-theme .login-panel-body .btns {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+
+body.app-light-theme .mcsmanager-link,
+body.app-dark-theme .mcsmanager-link,
+body.app-light-theme .mcsmanager-link a,
+body.app-dark-theme .mcsmanager-link a {
+  color: var(--pt-faint) !important;
+  font-size: 12px;
+}
+
+/* ---------- Buttons ---------- */
+body.app-light-theme .ant-btn,
+body.app-dark-theme .ant-btn {
+  border-radius: var(--pt-radius);
+  font-weight: 500;
+  box-shadow: none;
+  transition: background-color 0.15s ease, border-color 0.15s ease,
+    color 0.15s ease, transform 0.08s ease;
+}
+
+body.app-light-theme .ant-btn:active,
+body.app-dark-theme .ant-btn:active {
+  transform: translateY(1px);
+}
+
+/* Primary: #22C55E, hover #16A34A */
+body.app-light-theme .ant-btn-primary,
+body.app-dark-theme .ant-btn-primary {
+  background: var(--pt-primary-400) !important;
+  border-color: var(--pt-primary-400) !important;
+  color: #ffffff !important;
+  text-shadow: none;
+}
+
+body.app-light-theme .ant-btn-primary:hover,
+body.app-dark-theme .ant-btn-primary:hover {
+  background: var(--pt-primary-500) !important;
+  border-color: var(--pt-primary-500) !important;
+  color: #ffffff !important;
+}
+
+/* Secondary: #374151, hover #4B5563 */
+body.app-light-theme .ant-btn-default,
+body.app-dark-theme .ant-btn-default {
+  background: var(--pt-elevate) !important;
+  border-color: var(--pt-border) !important;
+  color: var(--pt-text) !important;
+}
+
+body.app-light-theme .ant-btn-default:hover,
+body.app-dark-theme .ant-btn-default:hover {
+  background: var(--pt-elevate-hover) !important;
+  border-color: var(--pt-elevate-hover) !important;
+  color: var(--pt-text) !important;
+}
+
+/* Danger: #DC2626, hover #B91C1C */
+body.app-light-theme .ant-btn-dangerous,
+body.app-dark-theme .ant-btn-dangerous,
+body.app-light-theme .ant-btn-danger,
+body.app-dark-theme .ant-btn-danger {
+  background: var(--pt-error) !important;
+  border-color: var(--pt-error) !important;
+  color: #ffffff !important;
+}
+
+body.app-light-theme .ant-btn-dangerous:hover,
+body.app-dark-theme .ant-btn-dangerous:hover,
+body.app-light-theme .ant-btn-danger:hover,
+body.app-dark-theme .ant-btn-danger:hover {
+  background: var(--pt-error-hover) !important;
+  border-color: var(--pt-error-hover) !important;
+  color: #ffffff !important;
+}
+
+/* Subtle green glow on focused buttons */
+body.app-light-theme .ant-btn:focus-visible,
+body.app-dark-theme .ant-btn:focus-visible,
+body.app-light-theme .ant-btn-primary:focus,
+body.app-dark-theme .ant-btn-primary:focus,
+body.app-light-theme .ant-btn-default:focus,
+body.app-dark-theme .ant-btn-default:focus,
+body.app-light-theme .ant-btn-dangerous:focus,
+body.app-dark-theme .ant-btn-dangerous:focus {
+  outline: none;
+  box-shadow: var(--pt-glow) !important;
+}
+
+body.app-light-theme .ant-btn-link,
+body.app-dark-theme .ant-btn-link {
+  color: var(--pt-primary-300) !important;
+}
+
+/* ---------- Inputs ---------- */
+body.app-light-theme .ant-input,
+body.app-dark-theme .ant-input,
+body.app-light-theme .ant-input-affix-wrapper,
+body.app-dark-theme .ant-input-affix-wrapper,
+body.app-light-theme .ant-input-number,
+body.app-dark-theme .ant-input-number,
+body.app-light-theme .ant-select-selector,
+body.app-dark-theme .ant-select-selector,
+body.app-light-theme .ant-picker,
+body.app-dark-theme .ant-picker,
+body.app-light-theme .account-input-container input,
+body.app-dark-theme .account-input-container input {
+  background: var(--pt-bg-2) !important;
+  border: 1px solid var(--pt-border-strong) !important;
+  border-radius: var(--pt-radius) !important;
+  color: var(--pt-text) !important;
+}
+
+/* An .ant-input nested in an affix wrapper would otherwise render a second
+   border/background inside the first — flatten the inner one. */
+body.app-light-theme .ant-input-affix-wrapper > .ant-input,
+body.app-dark-theme .ant-input-affix-wrapper > .ant-input,
+body.app-light-theme .ant-input-affix-wrapper > input.ant-input,
+body.app-dark-theme .ant-input-affix-wrapper > input.ant-input {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+body.app-light-theme .ant-input::placeholder,
+body.app-dark-theme .ant-input::placeholder,
+body.app-light-theme .ant-input-affix-wrapper input::placeholder,
+body.app-dark-theme .ant-input-affix-wrapper input::placeholder {
+  color: var(--pt-faint) !important;
+  opacity: 1;
+}
+
+/* Focus: green border + subtle glow. Scoped to body.* so these outrank the
+   panel's own `.app-dark-theme .ant-input:focus` rules, which are !important
+   and still carry the previous brand green. */
+body.app-light-theme .ant-input:focus,
+body.app-light-theme .ant-input-focused,
+body.app-light-theme .ant-input-affix-wrapper:focus,
+body.app-light-theme .ant-input-affix-wrapper-focused,
+body.app-light-theme .ant-select-focused .ant-select-selector,
+body.app-dark-theme .ant-input:focus,
+body.app-dark-theme .ant-input-focused,
+body.app-dark-theme .ant-input-affix-wrapper:focus,
+body.app-dark-theme .ant-input-affix-wrapper-focused,
+body.app-dark-theme .ant-select-focused .ant-select-selector {
+  border-color: var(--pt-primary-400) !important;
+  box-shadow: var(--pt-glow) !important;
+}
+
+body.app-light-theme .ant-input-suffix .anticon,
+body.app-dark-theme .ant-input-suffix .anticon,
+body.app-light-theme .ant-input-prefix .anticon,
+body.app-dark-theme .ant-input-prefix .anticon {
+  color: var(--pt-faint) !important;
+}
+
+body.app-light-theme .ant-select-dropdown,
+body.app-dark-theme .ant-select-dropdown,
+body.app-light-theme .ant-dropdown-menu,
+body.app-dark-theme .ant-dropdown-menu {
+  background: var(--pt-surface-2) !important;
+  border: 1px solid var(--pt-border-strong) !important;
+  border-radius: var(--pt-radius);
+  box-shadow: var(--pt-shadow-lg);
+}
+
+body.app-light-theme .ant-select-item,
+body.app-dark-theme .ant-select-item,
+body.app-light-theme .ant-dropdown-menu-item,
+body.app-dark-theme .ant-dropdown-menu-item {
+  color: var(--pt-text) !important;
+}
+
+body.app-light-theme .ant-select-item-option-active,
+body.app-dark-theme .ant-select-item-option-active,
+body.app-light-theme .ant-dropdown-menu-item:hover,
+body.app-dark-theme .ant-dropdown-menu-item:hover {
+  background: rgba(var(--pt-accent-rgb), 0.16) !important;
+}
+
+body.app-light-theme .ant-select-item-option-selected,
+body.app-dark-theme .ant-select-item-option-selected {
+  background: rgba(var(--pt-accent-rgb), 0.24) !important;
+  color: #fff !important;
+}
+
+/* ---------- Tables ----------
+   Ant Design v5 injects its component CSS into <head> at runtime, so those
+   rules land after this stylesheet and win any equal-specificity tie. Every
+   surface below therefore needs !important, or the table renders on Ant's
+   default white and the light text becomes unreadable. */
+body.app-light-theme .ant-table,
+body.app-dark-theme .ant-table,
+body.app-light-theme .ant-table-wrapper,
+body.app-dark-theme .ant-table-wrapper,
+body.app-light-theme .ant-table-container,
+body.app-dark-theme .ant-table-container,
+body.app-light-theme .ant-table-content,
+body.app-dark-theme .ant-table-content,
+body.app-light-theme .ant-table-body,
+body.app-dark-theme .ant-table-body,
+body.app-light-theme .ant-table-header,
+body.app-dark-theme .ant-table-header,
+body.app-light-theme .ant-table-summary,
+body.app-dark-theme .ant-table-summary,
+body.app-light-theme .ant-table-footer,
+body.app-dark-theme .ant-table-footer,
+body.app-light-theme .ant-table-title,
+body.app-dark-theme .ant-table-title,
+body.app-light-theme .ant-spin-nested-loading,
+body.app-dark-theme .ant-spin-nested-loading,
+body.app-light-theme .ant-spin-container,
+body.app-dark-theme .ant-spin-container {
+  background: transparent !important;
+  color: var(--pt-text) !important;
+}
+
+body.app-light-theme .ant-table-thead > tr > th,
+body.app-dark-theme .ant-table-thead > tr > th {
+  background: var(--pt-bg-2) !important;
+  color: var(--pt-muted) !important;
+  border-bottom: 1px solid var(--pt-border) !important;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+body.app-light-theme .ant-table-tbody > tr,
+body.app-dark-theme .ant-table-tbody > tr,
+body.app-light-theme .ant-table-tbody > tr > td,
+body.app-dark-theme .ant-table-tbody > tr > td,
+body.app-light-theme .ant-table-row > .ant-table-cell,
+body.app-dark-theme .ant-table-row > .ant-table-cell {
+  background: transparent !important;
+  color: var(--pt-text) !important;
+}
+
+body.app-light-theme .ant-table-tbody > tr > td,
+body.app-dark-theme .ant-table-tbody > tr > td {
+  border-bottom: 1px solid var(--pt-border) !important;
+}
+
+/* Sticky columns need a solid fill or rows show through while scrolling */
+body.app-light-theme .ant-table-cell-fix-left,
+body.app-dark-theme .ant-table-cell-fix-left,
+body.app-light-theme .ant-table-cell-fix-right,
+body.app-dark-theme .ant-table-cell-fix-right {
+  background: var(--pt-surface) !important;
+}
+
+body.app-light-theme .ant-table-tbody > tr:hover > td,
+body.app-dark-theme .ant-table-tbody > tr:hover > td,
+body.app-light-theme .ant-table-tbody > tr.ant-table-row-hover > td,
+body.app-dark-theme .ant-table-tbody > tr.ant-table-row-hover > td,
+body.app-light-theme .ant-table-row:hover > .ant-table-cell,
+body.app-dark-theme .ant-table-row:hover > .ant-table-cell {
+  background: rgba(var(--pt-accent-rgb), 0.08) !important;
+}
+
+body.app-light-theme .ant-table-placeholder,
+body.app-dark-theme .ant-table-placeholder,
+body.app-light-theme .ant-table-placeholder > td,
+body.app-dark-theme .ant-table-placeholder > td,
+body.app-light-theme .ant-empty,
+body.app-dark-theme .ant-empty,
+body.app-light-theme .ant-empty-description,
+body.app-dark-theme .ant-empty-description {
+  background: transparent !important;
+  color: var(--pt-muted) !important;
+}
+
+/* ---------- Tags / status pills ---------- */
+body.app-light-theme .ant-tag,
+body.app-dark-theme .ant-tag {
+  background: var(--pt-elevate) !important;
+  border: 1px solid var(--pt-border-strong) !important;
+  border-radius: 9999px;
+  color: var(--pt-text) !important;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 1px 10px;
+}
+
+/* ---------- Modals / drawers ---------- */
+body.app-light-theme .ant-modal-content,
+body.app-dark-theme .ant-modal-content,
+body.app-light-theme .ant-drawer-content,
+body.app-dark-theme .ant-drawer-content,
+body.app-light-theme .ant-popover-inner,
+body.app-dark-theme .ant-popover-inner {
+  background: var(--pt-surface) !important;
+  border: 1px solid var(--pt-border-strong) !important;
+  border-radius: 6px;
+  box-shadow: var(--pt-shadow-lg);
+  color: var(--pt-text) !important;
+}
+
+body.app-light-theme .ant-modal-header,
+body.app-dark-theme .ant-modal-header,
+body.app-light-theme .ant-drawer-header,
+body.app-dark-theme .ant-drawer-header {
+  background: transparent !important;
+  border-bottom: 1px solid var(--pt-border) !important;
+}
+
+body.app-light-theme .ant-modal-title,
+body.app-dark-theme .ant-modal-title,
+body.app-light-theme .ant-drawer-title,
+body.app-dark-theme .ant-drawer-title {
+  color: var(--pt-text) !important;
+  font-weight: 600;
+}
+
+body.app-light-theme .ant-modal-footer,
+body.app-dark-theme .ant-modal-footer {
+  border-top: 1px solid var(--pt-border) !important;
+}
+
+body.app-light-theme .ant-modal-close-x,
+body.app-dark-theme .ant-modal-close-x {
+  color: var(--pt-faint) !important;
+}
+
+body.app-light-theme .ant-modal-mask,
+body.app-dark-theme .ant-modal-mask,
+body.app-light-theme .ant-drawer-mask,
+body.app-dark-theme .ant-drawer-mask {
+  background: rgba(8, 12, 22, 0.75) !important;
+}
+
+/* ---------- Console / terminal ---------- */
+body.app-light-theme .console-wrapper,
+body.app-dark-theme .console-wrapper,
+body.app-light-theme .terminal-wrapper,
+body.app-dark-theme .terminal-wrapper,
+body.app-light-theme .editor-wrapper,
+body.app-dark-theme .editor-wrapper,
+body.app-light-theme .editor-container,
+body.app-dark-theme .editor-container {
+  background: var(--pt-sidebar) !important;
+  border: 1px solid var(--pt-border) !important;
+  border-radius: var(--pt-radius) !important;
+}
+
+body.app-light-theme .xterm .xterm-viewport,
+body.app-dark-theme .xterm .xterm-viewport {
+  background: var(--pt-sidebar) !important;
+}
+
+body.app-light-theme .command-input input,
+body.app-dark-theme .command-input input,
+body.app-light-theme .command-input .ant-input,
+body.app-dark-theme .command-input .ant-input {
+  background: var(--pt-sidebar) !important;
+  font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular,
+    Menlo, Consolas, monospace !important;
+}
+
+/* ---------- Progress / misc ---------- */
+body.app-light-theme .ant-progress-bg,
+body.app-dark-theme .ant-progress-bg {
+  background: var(--pt-primary-400) !important;
+}
+
+body.app-light-theme .ant-progress-inner,
+body.app-dark-theme .ant-progress-inner {
+  background: rgba(255, 255, 255, 0.07) !important;
+}
+
+body.app-light-theme .ant-breadcrumb,
+body.app-dark-theme .ant-breadcrumb,
+body.app-light-theme .ant-breadcrumb a,
+body.app-dark-theme .ant-breadcrumb a,
+body.app-light-theme .ant-breadcrumb-separator,
+body.app-dark-theme .ant-breadcrumb-separator {
+  color: var(--pt-faint) !important;
+}
+
+body.app-light-theme .ant-breadcrumb-link,
+body.app-dark-theme .ant-breadcrumb-link {
+  color: var(--pt-muted) !important;
+}
+
+body.app-light-theme .ant-divider,
+body.app-dark-theme .ant-divider {
+  border-color: var(--pt-border) !important;
+}
+
+body.app-light-theme .ant-skeleton-title,
+body.app-dark-theme .ant-skeleton-title,
+body.app-light-theme .ant-skeleton-paragraph > li,
+body.app-dark-theme .ant-skeleton-paragraph > li {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.05) 25%,
+    rgba(255, 255, 255, 0.09) 37%,
+    rgba(255, 255, 255, 0.05) 63%
+  ) !important;
+}
+
+body.app-light-theme .empty-state,
+body.app-dark-theme .empty-state,
+body.app-light-theme .empty-text,
+body.app-dark-theme .empty-text,
+body.app-light-theme .empty-description,
+body.app-dark-theme .empty-description {
+  color: var(--pt-faint) !important;
+}
+
+/* ---------- Scrollbars (Pterodactyl uses thin dark rails) ---------- */
+body.app-light-theme .custom-scrollbar,
+body.app-dark-theme .custom-scrollbar,
+body.app-light-theme .app-light-theme,
+body.app-dark-theme .app-light-theme,
+body.app-light-theme .app-dark-theme,
+body.app-dark-theme .app-dark-theme {
+  scrollbar-width: thin;
+  scrollbar-color: var(--pt-elevate-hover) transparent;
+}
+
+body.app-light-theme .app-light-theme ::-webkit-scrollbar,
+body.app-dark-theme .app-light-theme ::-webkit-scrollbar,
+body.app-light-theme .app-dark-theme ::-webkit-scrollbar,
+body.app-dark-theme .app-dark-theme ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+body.app-light-theme .app-light-theme ::-webkit-scrollbar-track,
+body.app-dark-theme .app-light-theme ::-webkit-scrollbar-track,
+body.app-light-theme .app-dark-theme ::-webkit-scrollbar-track,
+body.app-dark-theme .app-dark-theme ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+body.app-light-theme .app-light-theme ::-webkit-scrollbar-thumb,
+body.app-dark-theme .app-light-theme ::-webkit-scrollbar-thumb,
+body.app-light-theme .app-dark-theme ::-webkit-scrollbar-thumb,
+body.app-dark-theme .app-dark-theme ::-webkit-scrollbar-thumb {
+  background: var(--pt-elevate-hover);
+  border-radius: 9999px;
+}
+
+body.app-light-theme .app-light-theme ::-webkit-scrollbar-thumb:hover,
+body.app-dark-theme .app-light-theme ::-webkit-scrollbar-thumb:hover,
+body.app-light-theme .app-dark-theme ::-webkit-scrollbar-thumb:hover,
+body.app-dark-theme .app-dark-theme ::-webkit-scrollbar-thumb:hover {
+  background: var(--pt-muted);
+}
+
+/* ============================================================
+   OmenHosting custom components
+   ============================================================ */
+
+body.app-light-theme .omen-status-dot,
+body.app-dark-theme .omen-status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+/* Status colors: online / starting / stopping / offline / error */
+body.app-light-theme .omen-status-dot.is-running,
+body.app-dark-theme .omen-status-dot.is-running {
+  background: var(--pt-online);
+  box-shadow: var(--pt-glow);
+  animation: omen-pulse 2s ease-in-out infinite;
+}
+
+body.app-light-theme .omen-status-dot.is-starting,
+body.app-dark-theme .omen-status-dot.is-starting {
+  background: var(--pt-starting);
+  animation: omen-pulse 1.2s ease-in-out infinite;
+}
+
+body.app-light-theme .omen-status-dot.is-stopping,
+body.app-dark-theme .omen-status-dot.is-stopping {
+  background: var(--pt-stopping);
+  animation: omen-pulse 1.2s ease-in-out infinite;
+}
+
+body.app-light-theme .omen-status-dot.is-stopped,
+body.app-dark-theme .omen-status-dot.is-stopped {
+  background: var(--pt-offline);
+}
+
+body.app-light-theme .omen-status-dot.is-error,
+body.app-dark-theme .omen-status-dot.is-error {
+  background: var(--pt-error);
+}
+
+body.app-light-theme .omen-status-dot.is-sleeping,
+body.app-dark-theme .omen-status-dot.is-sleeping {
+  background: var(--pt-warn);
+}
+
+@keyframes omen-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .omen-status-dot.is-running,
+  .omen-status-dot.is-starting,
+  .omen-status-dot.is-stopping { animation: none; }
+}
+
+/* Server-address box above the console */
+body.app-light-theme .omen-ip-box,
+body.app-dark-theme .omen-ip-box {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  background: var(--pt-surface);
+  border: 1px solid var(--pt-border);
+  border-left: 3px solid var(--pt-primary-400);
+  border-radius: var(--pt-radius);
+  box-shadow: var(--pt-shadow);
+}
+
+body.app-light-theme .omen-ip-box__icon,
+body.app-dark-theme .omen-ip-box__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--pt-radius);
+  background: rgba(var(--pt-accent-rgb), 0.14);
+  color: var(--pt-primary-300);
+  flex: none;
+}
+
+body.app-light-theme .omen-ip-box__meta,
+body.app-dark-theme .omen-ip-box__meta { flex: 1; min-width: 0; }
+
+body.app-light-theme .omen-ip-box__label,
+body.app-dark-theme .omen-ip-box__label {
+  color: var(--pt-faint);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  margin-bottom: 3px;
+}
+
+body.app-light-theme .omen-ip-box__value,
+body.app-dark-theme .omen-ip-box__value {
+  color: var(--pt-text);
+  font-size: 15px;
+  font-weight: 600;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body.app-light-theme .omen-btn,
+body.app-dark-theme .omen-btn {
+  background: var(--pt-primary-500);
+  color: #fff;
+  border: none;
+  padding: 8px 16px;
+  border-radius: var(--pt-radius);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transition: background-color 0.15s ease;
+}
+
+body.app-light-theme .omen-btn:hover,
+body.app-dark-theme .omen-btn:hover { background: var(--pt-primary-400); }
+body.app-light-theme .omen-btn:disabled,
+body.app-dark-theme .omen-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+body.app-light-theme .omen-btn--ok,
+body.app-dark-theme .omen-btn--ok { background: var(--pt-success); }
+body.app-light-theme .omen-btn--ghost,
+body.app-dark-theme .omen-btn--ghost {
+  background: var(--pt-elevate);
+  color: var(--pt-muted);
+  border: 1px solid var(--pt-border-strong);
+}
+body.app-light-theme .omen-btn--ghost:hover,
+body.app-dark-theme .omen-btn--ghost:hover { background: var(--pt-elevate-hover); color: #fff; }
+
+/* Modals (signup / create / queue) */
+body.app-light-theme .omen-modal,
+body.app-dark-theme .omen-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 12, 22, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 20px;
+}
+
+body.app-light-theme .omen-modal__card,
+body.app-dark-theme .omen-modal__card {
+  background: var(--pt-surface);
+  border: 1px solid var(--pt-border-strong);
+  border-radius: 6px;
+  box-shadow: var(--pt-shadow-lg);
+  padding: 28px;
+  width: 400px;
+  max-width: 100%;
+}
+
+body.app-light-theme .omen-modal__title,
+body.app-dark-theme .omen-modal__title {
+  color: var(--pt-text);
+  margin: 0 0 6px;
+  font-size: 18px;
+  font-weight: 600;
+  text-align: center;
+}
+
+body.app-light-theme .omen-modal__sub,
+body.app-dark-theme .omen-modal__sub {
+  color: var(--pt-muted);
+  font-size: 12px;
+  text-align: center;
+  margin: 0 0 22px;
+}
+
+body.app-light-theme .omen-field,
+body.app-dark-theme .omen-field { margin-bottom: 16px; }
+
+body.app-light-theme .omen-field label,
+body.app-dark-theme .omen-field label {
+  display: block;
+  color: var(--pt-faint);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  margin-bottom: 6px;
+}
+
+body.app-light-theme .omen-field input,
+body.app-dark-theme .omen-field input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  background: var(--pt-bg-2);
+  border: 1px solid var(--pt-border-strong);
+  border-radius: var(--pt-radius);
+  color: var(--pt-text);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+body.app-light-theme .omen-field input:focus,
+body.app-dark-theme .omen-field input:focus {
+  border-color: var(--pt-primary-400);
+  box-shadow: 0 0 0 2px rgba(var(--pt-accent-rgb), 0.2);
+}
+
+body.app-light-theme .omen-modal__actions,
+body.app-dark-theme .omen-modal__actions { display: flex; gap: 10px; }
+body.app-light-theme .omen-modal__actions .omen-btn,
+body.app-dark-theme .omen-modal__actions .omen-btn { flex: 1; }
+
+body.app-light-theme .omen-msg,
+body.app-dark-theme .omen-msg { font-size: 12px; margin-bottom: 12px; text-align: center; }
+body.app-light-theme .omen-msg--err,
+body.app-dark-theme .omen-msg--err { color: var(--pt-danger); }
+body.app-light-theme .omen-msg--ok,
+body.app-dark-theme .omen-msg--ok { color: var(--pt-success); }
+
+/* Signup link on the login card */
+body.app-light-theme .omen-signup-link,
+body.app-dark-theme .omen-signup-link {
+  text-align: center;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--pt-border);
+  font-size: 13px;
+  color: var(--pt-muted);
+}
+
+body.app-light-theme .omen-signup-link a,
+body.app-dark-theme .omen-signup-link a {
+  color: var(--pt-primary-300);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+body.app-light-theme .omen-signup-link a:hover,
+body.app-dark-theme .omen-signup-link a:hover { text-decoration: underline; }
+
+/* Queue modal */
+body.app-light-theme .omen-queue__position,
+body.app-dark-theme .omen-queue__position {
+  font-size: 44px;
+  font-weight: 700;
+  color: var(--pt-primary-300);
+  margin: 14px 0 4px;
+  line-height: 1;
+}
+
+body.app-light-theme .omen-queue__icon,
+body.app-dark-theme .omen-queue__icon { color: var(--pt-primary-300); margin-bottom: 16px; }
+body.app-light-theme .omen-queue__meta,
+body.app-dark-theme .omen-queue__meta { color: var(--pt-faint); font-size: 11px; margin: 0 0 18px; }
+body.app-light-theme .omen-queue__leave,
+body.app-dark-theme .omen-queue__leave {
+  color: var(--pt-faint);
+  font-size: 12px;
+  margin: 16px 0 0;
+  cursor: pointer;
+}
+body.app-light-theme .omen-queue__leave:hover,
+body.app-dark-theme .omen-queue__leave:hover { color: var(--pt-muted); }
+
+/* ---------- Cloud backup / restore progress ---------- */
+body.app-light-theme .omen-backup-box,
+body.app-dark-theme .omen-backup-box {
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  background: var(--pt-surface) !important;
+  border: 1px solid var(--pt-border) !important;
+  border-left: 3px solid var(--pt-primary-400);
+  border-radius: var(--pt-radius);
+  box-shadow: var(--pt-shadow);
+}
+
+body.app-light-theme .omen-backup-box.is-done,
+body.app-dark-theme .omen-backup-box.is-done {
+  border-left-color: var(--pt-success);
+}
+
+body.app-light-theme .omen-backup-box.is-failed,
+body.app-dark-theme .omen-backup-box.is-failed {
+  border-left-color: var(--pt-error);
+}
+
+body.app-light-theme .omen-backup-box__head,
+body.app-dark-theme .omen-backup-box__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+body.app-light-theme .omen-backup-box__label,
+body.app-dark-theme .omen-backup-box__label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--pt-muted) !important;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+}
+
+body.app-light-theme .omen-backup-box__state,
+body.app-dark-theme .omen-backup-box__state {
+  color: var(--pt-text) !important;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+body.app-light-theme .omen-backup-box.is-failed .omen-backup-box__state,
+body.app-dark-theme .omen-backup-box.is-failed .omen-backup-box__state {
+  color: var(--pt-error) !important;
+}
+
+body.app-light-theme .omen-backup-box.is-done .omen-backup-box__state,
+body.app-dark-theme .omen-backup-box.is-done .omen-backup-box__state {
+  color: var(--pt-success) !important;
+}
+
+body.app-light-theme .omen-backup-box__msg,
+body.app-dark-theme .omen-backup-box__msg {
+  color: var(--pt-text-2) !important;
+  font-size: 12px;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  word-break: break-word;
+}
+
+body.app-light-theme .omen-backup-bar,
+body.app-dark-theme .omen-backup-bar {
+  height: 6px;
+  margin-bottom: 8px;
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+body.app-light-theme .omen-backup-bar__fill,
+body.app-dark-theme .omen-backup-bar__fill {
+  height: 100%;
+  background: var(--pt-primary-400);
+  border-radius: 9999px;
+  transition: width 0.3s ease;
+}
+
+body.app-light-theme .omen-backup-retry,
+body.app-dark-theme .omen-backup-retry {
+  margin-top: 10px;
+}
+
+body.app-light-theme .omen-spinner,
+body.app-dark-theme .omen-spinner {
+  width: 11px;
+  height: 11px;
+  border: 2px solid rgba(var(--pt-accent-rgb), 0.25);
+  border-top-color: var(--pt-primary-400);
+  border-radius: 50%;
+  display: inline-block;
+  animation: omen-spin 0.7s linear infinite;
+}
+
+@keyframes omen-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .omen-spinner { animation: none; }
+}
+
+/* ---------- Modpack installer / plugin manager ---------- */
+body.app-light-theme .omen-modal__card--wide,
+body.app-dark-theme .omen-modal__card--wide {
+  width: 640px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+}
+
+body.app-light-theme .omen-mod-results,
+body.app-dark-theme .omen-mod-results,
+body.app-light-theme .omen-mod-installed,
+body.app-dark-theme .omen-mod-installed {
+  overflow-y: auto;
+  max-height: 320px;
+  margin-bottom: 12px;
+}
+
+body.app-light-theme .omen-mod-installed,
+body.app-dark-theme .omen-mod-installed {
+  max-height: 200px;
+  border-top: 1px solid var(--pt-border);
+  padding-top: 10px;
+}
+
+body.app-light-theme .omen-mod-heading,
+body.app-dark-theme .omen-mod-heading {
+  color: var(--pt-muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  margin-bottom: 8px;
+}
+
+body.app-light-theme .omen-mod-row,
+body.app-dark-theme .omen-mod-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--pt-border);
+  border-radius: var(--pt-radius);
+  margin-bottom: 8px;
+  background: var(--pt-bg-2);
+}
+
+body.app-light-theme .omen-mod-row:hover,
+body.app-dark-theme .omen-mod-row:hover {
+  border-color: var(--pt-primary-400);
+}
+
+body.app-light-theme .omen-mod-icon,
+body.app-dark-theme .omen-mod-icon {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: var(--pt-radius);
+  background: var(--pt-elevate);
+  object-fit: cover;
+}
+
+body.app-light-theme .omen-mod-meta,
+body.app-dark-theme .omen-mod-meta { flex: 1; min-width: 0; }
+
+body.app-light-theme .omen-mod-name,
+body.app-dark-theme .omen-mod-name {
+  color: var(--pt-text);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+body.app-light-theme .omen-mod-desc,
+body.app-dark-theme .omen-mod-desc {
+  color: var(--pt-text-2);
+  font-size: 12px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+body.app-light-theme .omen-mod-sub,
+body.app-dark-theme .omen-mod-sub {
+  color: var(--pt-faint);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+body.app-light-theme .omen-mod-empty,
+body.app-dark-theme .omen-mod-empty {
+  color: var(--pt-faint);
+  font-size: 12px;
+  padding: 14px 4px;
+  text-align: center;
+}
+
+body.app-light-theme .omen-btn--danger,
+body.app-dark-theme .omen-btn--danger {
+  background: var(--pt-error);
+  color: #ffffff;
+  border: none;
+}
+
+body.app-light-theme .omen-btn--danger:hover,
+body.app-dark-theme .omen-btn--danger:hover { background: var(--pt-error-hover); }
+
+body.app-light-theme .omen-mod-row .omen-btn,
+body.app-dark-theme .omen-mod-row .omen-btn {
+  flex: none;
+  padding: 6px 12px;
+  font-size: 11px;
+}
+
+/* ---------- Resource usage (CPU / RAM / storage) ----------
+   The panel's own "Basic Infomation" card sits directly above wherever this
+   box is inserted (see addResourceUsage in inject.js), so the CSS adjacency
+   selector below uniquely targets exactly that card and hides it — a pure
+   CSS hide, never touching its markup. That panel re-renders on its own
+   polling cycle, so anything written into its DOM would just get wiped on
+   the next cycle; display:none from the outside has no such problem. */
+body.app-light-theme .card-panel:has(+ .omen-resource-box),
+body.app-dark-theme .card-panel:has(+ .omen-resource-box) {
+  display: none !important;
+}
+
+body.app-light-theme .omen-resource-box,
+body.app-dark-theme .omen-resource-box {
+  padding: 16px 18px 18px;
+  margin-top: 0;
+  margin-bottom: 14px;
+  background: var(--pt-surface) !important;
+  border: 1px solid var(--pt-border) !important;
+  border-radius: var(--pt-radius);
+  box-shadow: var(--pt-shadow);
+}
+
+body.app-light-theme .omen-resource-box__title,
+body.app-dark-theme .omen-resource-box__title {
+  color: var(--pt-muted) !important;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  margin-bottom: 14px;
+}
+
+body.app-light-theme .omen-resource-grid,
+body.app-dark-theme .omen-resource-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+
+@media (max-width: 640px) {
+  body.app-light-theme .omen-resource-grid,
+  body.app-dark-theme .omen-resource-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+body.app-light-theme .omen-resource-row,
+body.app-dark-theme .omen-resource-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--pt-bg-2);
+  border: 1px solid var(--pt-border);
+  border-radius: var(--pt-radius);
+}
+
+body.app-light-theme .omen-resource-row__head,
+body.app-dark-theme .omen-resource-row__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+body.app-light-theme .omen-resource-row__icon,
+body.app-dark-theme .omen-resource-row__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 6px;
+  background: rgba(var(--pt-accent-rgb), 0.14);
+  color: var(--pt-primary-300);
+}
+
+body.app-light-theme .omen-resource-row--offline .omen-resource-row__icon,
+body.app-dark-theme .omen-resource-row--offline .omen-resource-row__icon {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--pt-faint);
+}
+
+body.app-light-theme .omen-resource-row__label,
+body.app-dark-theme .omen-resource-row__label {
+  color: var(--pt-muted) !important;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+body.app-light-theme .omen-resource-row__value,
+body.app-dark-theme .omen-resource-row__value {
+  color: var(--pt-text) !important;
+  font-size: 18px;
+  font-weight: 700;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  line-height: 1;
+}
+
+body.app-light-theme .omen-resource-row--offline .omen-resource-row__value,
+body.app-dark-theme .omen-resource-row--offline .omen-resource-row__value {
+  color: var(--pt-faint) !important;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+body.app-light-theme .omen-resource-row__bar,
+body.app-dark-theme .omen-resource-row__bar {
+  height: 5px;
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+body.app-light-theme .omen-resource-row__fill,
+body.app-dark-theme .omen-resource-row__fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--pt-primary-500), var(--pt-primary-300));
+  border-radius: 9999px;
+  transition: width 0.5s ease;
+}
+
+body.app-light-theme .omen-resource-row--offline .omen-resource-row__fill,
+body.app-dark-theme .omen-resource-row--offline .omen-resource-row__fill {
+  background: var(--pt-border-strong);
+}
+
+body.app-light-theme .omen-resource-row__sub,
+body.app-dark-theme .omen-resource-row__sub {
+  color: var(--pt-faint) !important;
+  font-size: 11px;
+  font-weight: 500;
+}

@@ -1,0 +1,12 @@
+{
+  "name": "minecraft-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PumpkinMC + MCSManager Minecraft server on Replit",
+  "scripts": {
+    "start": "cd minecraft-server && node web/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

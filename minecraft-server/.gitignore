@@ -1,0 +1,11 @@
+# Secrets and provider state — never commit
+.env
+
+# Backup working files and local backup store
+omen-data/backup-work/
+omen-data/backups/
+omen-data/backup-history.jsonl
+
+node_modules/
+logs/
+.pids/

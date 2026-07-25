@@ -1,0 +1,19 @@
+{
+  "name": "minecraft-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PumpkinMC + MCSManager Minecraft server",
+  "scripts": {
+    "start": "bash scripts/run.sh",
+    "test": "node middleware/test/run-tests.js",
+    "test:live": "node middleware/test/run-tests.js --live"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "socket.io-client": "^4.8.3",
+    "yauzl": "^3.4.0"
+  }
+}

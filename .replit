@@ -1,0 +1,23 @@
+run = "cd minecraft-server && bash start.sh"
+entrypoint = "minecraft-server/start.sh"
+
+[[ports]]
+localPort = 3000
+externalPort = 3002
+
+[[ports]]
+localPort = 23333
+externalPort = 3001
+
+[[ports]]
+localPort = 24444
+externalPort = 3000
+exposeLocalhost = true
+
+[deployment]
+run = ["sh", "-c", "cd minecraft-server && bash deploy-start.sh"]
+deploymentTarget = "cloudrun"
+
+[nix]
+channel = "stable-24_05"
+packages = ["lsof"]

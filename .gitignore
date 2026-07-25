@@ -1,0 +1,33 @@
+# Secrets and local env state — never commit
+.env
+*.env
+**/.session-key
+
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Runtime data / logs / pids
+logs/
+**/logs/
+.pids/
+**/.pids/
+*.log
+
+# MCSManager runtime data (contains access keys, real user accounts,
+# instance configs, and actual Minecraft world/server files)
+minecraft-server/data/
+minecraft-server/mcsmanager/data/
+minecraft-server/mcsmanager/daemon/data/
+minecraft-server/mcsmanager/web/data/
+
+# Middleware runtime state (backup history, settings, working files)
+minecraft-server/omen-data/
+
+# Leftover top-level runtime/world data (real server + player data, not source)
+/data/
+/world/
+
+# OS cruft
+.DS_Store
+Thumbs.db
