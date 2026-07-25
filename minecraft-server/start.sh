@@ -70,6 +70,11 @@ restart_service() {
   esac
 }
 
+for name in router mcsm-daemon mcsm-web middleware; do
+  touch "$LOG_DIR/$name.log"
+  ( tail -n 0 -F "$LOG_DIR/$name.log" 2>/dev/null | sed "s/^/[$name] /" ) &
+done
+
 echo "[1] Starting services..."
 restart_service router
 

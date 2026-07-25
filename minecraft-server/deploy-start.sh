@@ -62,6 +62,16 @@ start_service() {
   echo "  Started $name (PID $!)"
 }
 
+# Replit's deployment log only captures this script's own stdout/stderr —
+# it can't see files written inside the container. Stream every service's
+# log into this process's stdout (prefixed by name) so real crash output
+# is actually visible in the platform's Logs panel instead of being stuck
+# in files nobody can read.
+for name in router mcsm-daemon mcsm-web middleware; do
+  touch "$LOG_DIR/$name.log"
+  ( tail -n 0 -F "$LOG_DIR/$name.log" 2>/dev/null | sed "s/^/[$name] /" ) &
+done
+
 echo "[1/4] Starting router (no external deps — opens the health-checked port immediately)..."
 start_service router "$NODE" --max-old-space-size="$ROUTER_HEAP" "$BASE_DIR/web/index.js"
 
