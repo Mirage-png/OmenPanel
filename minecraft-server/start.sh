@@ -55,7 +55,7 @@ start_service() {
   local name="$1"; shift
   local pidf="$PID_DIR/$name.pid"
   local logf="$LOG_DIR/$name.log"
-  setsid "$@" >> "$logf" 2>&1 &
+  "$@" >> "$logf" 2>&1 &
   echo $! > "$pidf"
   echo "  Started $name (PID $!)"
 }
@@ -97,8 +97,6 @@ echo "============================================"
 echo "  Monitoring $(ls "$PID_DIR"/*.pid 2>/dev/null | wc -l) services (auto-restart, max 5/service per 10min)..."
 echo "============================================"
 
-declare -A RESTART_COUNTS
-declare -A LAST_RESTART
 MAX_RESTARTS=5
 RESTART_WINDOW=600
 
@@ -112,21 +110,25 @@ while true; do
     pid=$(cat "$pidf")
     kill -0 "$pid" 2>/dev/null && continue
 
-    last="${LAST_RESTART[$name]:-0}"
+    countfile="$PID_DIR/$name.restarts"
+    lastfile="$PID_DIR/$name.lastrestart"
+    count=$(cat "$countfile" 2>/dev/null || echo 0)
+    last=$(cat "$lastfile" 2>/dev/null || echo 0)
+
     if [ $((now - last)) -gt "$RESTART_WINDOW" ]; then
-      RESTART_COUNTS[$name]=0
+      count=0
     fi
 
-    if [ "${RESTART_COUNTS[$name]:-0}" -ge "$MAX_RESTARTS" ]; then
+    if [ "$count" -ge "$MAX_RESTARTS" ]; then
       echo "[WARN] $name crash-looping, backing off"
-      LAST_RESTART[$name]=$now
-      RESTART_COUNTS[$name]=0
+      echo "$now" > "$lastfile"
+      echo 0 > "$countfile"
       continue
     fi
 
-    echo "[RESTART] $name (died, attempt $((${RESTART_COUNTS[$name]:-0} + 1))/$MAX_RESTARTS)"
-    RESTART_COUNTS[$name]=$(( ${RESTART_COUNTS[$name]:-0} + 1 ))
-    LAST_RESTART[$name]=$now
+    echo "[RESTART] $name (died, attempt $((count + 1))/$MAX_RESTARTS)"
+    echo $((count + 1)) > "$countfile"
+    echo "$now" > "$lastfile"
     rm -f "$pidf"
     restart_service "$name"
   done

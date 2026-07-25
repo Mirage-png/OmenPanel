@@ -57,7 +57,7 @@ start_service() {
   local name="$1"; shift
   local pidfile="$PID_DIR/$name.pid"
   local logfile="$LOG_DIR/$name.log"
-  setsid "$@" >> "$logfile" 2>&1 &
+  "$@" >> "$logfile" 2>&1 &
   echo $! > "$pidfile"
   echo "  Started $name (PID $!)"
 }
@@ -92,8 +92,9 @@ fi
 echo "Deployment started. Monitoring with auto-restart (max 5 restarts/service before backing off)..."
 
 # ── Monitor + auto-restart with crash-loop protection ─────────────────
-declare -A RESTART_COUNTS
-declare -A LAST_RESTART
+# Restart counters live in plain files rather than associative arrays —
+# this environment already turned out to be missing `setsid`, a normally
+# ubiquitous util-linux tool, so bash-4-only features aren't assumed safe.
 MAX_RESTARTS=5
 RESTART_WINDOW=600  # reset restart count if service stays up this long (s)
 
@@ -117,21 +118,25 @@ while true; do
     pid=$(cat "$pidfile" 2>/dev/null)
     kill -0 "$pid" 2>/dev/null && continue
 
-    last="${LAST_RESTART[$name]:-0}"
+    countfile="$PID_DIR/$name.restarts"
+    lastfile="$PID_DIR/$name.lastrestart"
+    count=$(cat "$countfile" 2>/dev/null || echo 0)
+    last=$(cat "$lastfile" 2>/dev/null || echo 0)
+
     if [ $((now - last)) -gt "$RESTART_WINDOW" ]; then
-      RESTART_COUNTS[$name]=0
+      count=0
     fi
 
-    if [ "${RESTART_COUNTS[$name]:-0}" -ge "$MAX_RESTARTS" ]; then
+    if [ "$count" -ge "$MAX_RESTARTS" ]; then
       echo "[WARN] $name crash-looping, backing off (waiting ${RESTART_WINDOW}s before retry)"
-      LAST_RESTART[$name]=$now
-      RESTART_COUNTS[$name]=0
+      echo "$now" > "$lastfile"
+      echo 0 > "$countfile"
       continue
     fi
 
-    echo "[RESTART] $name (died, attempt $((${RESTART_COUNTS[$name]:-0} + 1))/$MAX_RESTARTS)"
-    RESTART_COUNTS[$name]=$(( ${RESTART_COUNTS[$name]:-0} + 1 ))
-    LAST_RESTART[$name]=$now
+    echo "[RESTART] $name (died, attempt $((count + 1))/$MAX_RESTARTS)"
+    echo $((count + 1)) > "$countfile"
+    echo "$now" > "$lastfile"
     rm -f "$pidfile"
     restart_service "$name"
   done

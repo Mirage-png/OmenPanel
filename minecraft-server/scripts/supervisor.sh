@@ -90,7 +90,7 @@ start_service() {
   local name="$1"; shift
   local pidfile="$PID_DIR/$name.pid"
   local logfile="$LOG_DIR/$name.log"
-  setsid "$@" > "$logfile" 2>&1 &
+  "$@" > "$logfile" 2>&1 &
   echo $! > "$pidfile"
 }
 
@@ -133,7 +133,9 @@ echo "  Web Panel:     $TUNNEL_URL  (login with OMEN_ADMIN_USERNAME / OMEN_ADMIN
 echo "  Stop via: kill -SIGUSR1 $$"; echo ""
 
 # ── Monitor + auto-restart ────────────────────────────────────────
-declare -A RESTART_COUNTS
+# Restart counts live in plain files, not associative arrays — this
+# environment turned out to be missing `setsid`, a normally ubiquitous
+# util-linux tool, so bash-4-only features aren't assumed safe either.
 MAX_RESTARTS=5
 
 echo "[boot] Monitoring... (auto-restart enabled, max $MAX_RESTARTS per service)"
@@ -145,24 +147,27 @@ while [ ! -f "$STOP_FILE" ]; do
     pid=$(cat "$pidfile" 2>/dev/null)
     [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && continue
 
-    [ "${RESTART_COUNTS[$name]:-0}" -ge "$MAX_RESTARTS" ] && {
+    countfile="$PID_DIR/$name.restarts"
+    count=$(cat "$countfile" 2>/dev/null || echo 0)
+
+    [ "$count" -ge "$MAX_RESTARTS" ] && {
       echo "[WARN] $name max restarts reached"; continue; }
 
-    echo "[RESTART] $name (attempt $((RESTART_COUNTS[$name] + 1))/$MAX_RESTARTS)"
-    RESTART_COUNTS[$name]=$((RESTART_COUNTS[$name] + 1))
+    echo "[RESTART] $name (attempt $((count + 1))/$MAX_RESTARTS)"
+    echo $((count + 1)) > "$countfile"
 
     case "$name" in
       router)
-        setsid "$NODE_BIN" "$BASE_DIR/web/index.js" > "$LOG_DIR/router.log" 2>&1 &
+        "$NODE_BIN" "$BASE_DIR/web/index.js" > "$LOG_DIR/router.log" 2>&1 &
         echo $! > "$pidfile" ;;
       mcsm-daemon)
-        setsid bash -c "cd '$BASE_DIR/mcsmanager/daemon' && '$NODE_BIN' $NODE_FLAGS app.js" > "$LOG_DIR/mcsm-daemon.log" 2>&1 &
+        bash -c "cd '$BASE_DIR/mcsmanager/daemon' && '$NODE_BIN' $NODE_FLAGS app.js" > "$LOG_DIR/mcsm-daemon.log" 2>&1 &
         echo $! > "$pidfile" ;;
       mcsm-web)
-        setsid bash -c "cd '$BASE_DIR/mcsmanager/web' && '$NODE_BIN' $NODE_FLAGS app.js" > "$LOG_DIR/mcsm-web.log" 2>&1 &
+        bash -c "cd '$BASE_DIR/mcsmanager/web' && '$NODE_BIN' $NODE_FLAGS app.js" > "$LOG_DIR/mcsm-web.log" 2>&1 &
         echo $! > "$pidfile" ;;
       middleware)
-        setsid "$NODE_BIN" "$BASE_DIR/middleware/server.js" > "$LOG_DIR/middleware.log" 2>&1 &
+        "$NODE_BIN" "$BASE_DIR/middleware/server.js" > "$LOG_DIR/middleware.log" 2>&1 &
         echo $! > "$pidfile" ;;
     esac
     sleep 2
