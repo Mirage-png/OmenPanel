@@ -1333,6 +1333,26 @@ setInterval(loadInstances, 10000);
     return handleSignup(req, res);
   }
 
+  // Diagnostic: echo how this request's client IP is being resolved.
+  //
+  // The panel bans an IP after repeated failed logins, so if X-Real-IP
+  // collapses to one shared address every visitor shares a ban. The correct
+  // entry to pick out of X-Forwarded-For depends on how many proxies the
+  // hosting platform puts in front of us, which is not knowable from here —
+  // this reports the raw chain so it can be determined from evidence.
+  //
+  // Only reflects the caller's own headers; it exposes nothing about anyone else.
+  if (url.pathname === '/api/omen/debug/ip' && req.method === 'GET') {
+    const xff = req.headers['x-forwarded-for'] || null;
+    return sendJSON(res, 200, {
+      xForwardedFor: xff,
+      xForwardedForParts: xff ? String(xff).split(',').map((s) => s.trim()) : [],
+      xRealIp: req.headers['x-real-ip'] || null,   // what the router computed
+      forwarded: req.headers['forwarded'] || null,
+      socketRemoteAddress: req.socket.remoteAddress || null
+    });
+  }
+
   // Check if username exists (in MCSManager users)
   if (url.pathname === '/api/omen/check-user' && req.method === 'GET') {
     const username = url.searchParams.get('username');
