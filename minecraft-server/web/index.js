@@ -11,6 +11,24 @@ const MIDDLEWARE = { host: '127.0.0.1', port: 29999 };
 const THEME_LINK = `<link rel="stylesheet" href="/api/omen/theme.css">`;
 const INJECT_SCRIPT = THEME_LINK + `<script defer src="/api/omen/inject.js"></script>`;
 
+/**
+ * The real client IP, for the X-Real-IP header the web panel reads to apply
+ * its per-IP login-failure ban. Without this every visitor looks like
+ * 127.0.0.1 (this router) and one visitor's failed logins ban everyone.
+ *
+ * The rightmost X-Forwarded-For entry is the one appended by the closest
+ * trusted proxy (the platform edge); entries to its left can be forged by
+ * the client, so they are deliberately not used.
+ */
+function clientIp(req) {
+  const xff = req.headers['x-forwarded-for'];
+  if (xff) {
+    const parts = String(xff).split(',').map((s) => s.trim()).filter(Boolean);
+    if (parts.length) return parts[parts.length - 1];
+  }
+  return req.socket.remoteAddress || '';
+}
+
 function getBackend(path) {
   if (path.startsWith('/socket.io')) return DAEMON;
   if (path.startsWith('/upload-new')) return DAEMON;
@@ -29,7 +47,13 @@ function getBackend(path) {
  *   bytes are replayed here instead of piping.
  */
 function proxyRequest(req, res, target, body) {
-  const headers = { ...req.headers, host: `${target.host}:${target.port}` };
+  // X-Real-IP is always overwritten, never forwarded from the client, so a
+  // visitor cannot forge it to dodge (or poison) the panel's per-IP ban.
+  const headers = {
+    ...req.headers,
+    host: `${target.host}:${target.port}`,
+    'x-real-ip': clientIp(req)
+  };
 
   // HTML gets rewritten below, which only works on uncompressed bytes. Ask the
   // panel for identity encoding on document requests; every other response is
@@ -245,7 +269,13 @@ const server = http.createServer((req, res) => {
 
 server.on('upgrade', (req, socket, head) => {
   const { host, port } = getBackend(url.parse(req.url).path);
-  const proxy = http.request({ hostname: host, port, path: req.url, method: 'GET', headers: req.headers });
+  const proxy = http.request({
+    hostname: host,
+    port,
+    path: req.url,
+    method: 'GET',
+    headers: { ...req.headers, 'x-real-ip': clientIp(req) }
+  });
   proxy.on('upgrade', (upstream, upstreamSocket, upstreamHead) => {
     socket.on('error', () => upstreamSocket.destroy());
     upstreamSocket.on('error', () => socket.destroy());
