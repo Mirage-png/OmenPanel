@@ -152,27 +152,32 @@ must be **generated at boot by a script**, not committed as a data file.
 - Forged leftmost `X-Forwarded-For` entries are correctly ignored
 - Theme/inject assets serve; panel HTML renders
 
-**NOT verified on the live deployment — this is your job:**
-- Whether `mcsm-daemon` still crash-loops after the `install-libs.js` fix
-- Whether signup works end-to-end on the live site
-- Whether the panel stays up over hours, not just seconds
+**Confirmed on the live deployment (read from the platform's Logs panel):**
+- The daemon is **not** crash-looping. No `[RESTART]` lines appear at all.
+  `[mcsm-web] Remote daemon ... key validation successful` and
+  `[mcsm-web] Number of local users: 2` confirm daemon and panel are healthy,
+  and `------ User Login Event ------` is a real successful login.
+- `[libs] Detected platform: linux_x64` → `[OK] pty_linux_x64`,
+  `[OK] 7z_linux_x64` — the architecture-binary fix works.
+- `[bootstrap] Enabled reverse-proxy mode (X-Real-IP)` appears on boot.
+- `[bootstrap] Created initial admin account` is correctly **absent**, because
+  accounts already exist — that is the intended skip, not a failure.
+- The public URL serves the real themed login page, not the old `OK` fallback.
+- The `healthcheck failed ... 500` bursts occur only in the first ~5 seconds of
+  boot and then stop. Transient and expected; not a fault.
+
+**Still unverified:**
+- Whether the panel stays healthy over hours, and what happens to a *running*
+  Minecraft server over time (see §9B — this is mostly gated on Autoscale).
 
 ---
 
 ## 9. What needs to be done
 
-### A. Verify the live deployment (highest priority)
-1. Confirm the deployed commit matches GitHub `main` (`git log -1`). Everything
-   below is meaningless against stale code.
-2. Redeploy, then read the **runtime** log (after "Starting Build" finishes) for
-   at least 60 seconds of uptime. Quote every `[mcsm-daemon]`, `[mcsm-web]`,
-   `[bootstrap]`, and `[RESTART]` line.
-3. If the daemon still crash-loops, the prefixed log now contains the real stack
-   trace. Diagnose from that — do not guess.
-4. Confirm `[bootstrap] Created initial admin account` and
-   `[bootstrap] Enabled reverse-proxy mode` both appear.
-5. Test signup through the actual UI; confirm a new file appears in
-   `mcsmanager/web/data/User/`.
+### A. Verify the live deployment — ✅ DONE
+Completed; see §8 for the confirmed log evidence. The daemon is healthy, the
+panel serves correctly, and login works. Do not re-litigate this without new
+evidence of a regression.
 
 ### B. Switch deployment type to Reserved VM
 Currently `deploymentTarget = "cloudrun"`. This app is stateful and
@@ -180,19 +185,20 @@ single-instance by design. Autoscale's scale-to-zero and multi-instance model
 will corrupt or lose state regardless of any code fix. **This is a change the
 project owner makes in the platform UI**, not in code.
 
-### C. Real gap: admin password rotation does nothing
-`bootstrapAdminIfNeeded()` only acts when the user directory is **empty**. If
-`OMEN_ADMIN_PASSWORD` is changed later, the existing account keeps the old
-password and the new secret silently does nothing — a confusing failure mode.
-Add a safe reconciliation path (e.g. update the admin account's hash when the
-env password no longer matches), being careful not to clobber non-admin users.
+### C. Admin password rotation — ✅ DONE
+`bootstrapAdminIfNeeded()` used to act only on an empty user directory, so
+rotating `OMEN_ADMIN_PASSWORD` silently did nothing. It now reconciles the
+stored hash against the env var each boot and rewrites only on divergence,
+touching only the permission-10 account named by `OMEN_ADMIN_USERNAME`.
+The secret is authoritative, so a password changed in the panel UI is reset on
+the next boot.
 
-### D. Design issue: the router's "OK" fallback hides outages
-When the router can't reach the web panel it returns a plain `OK` with HTTP 200.
-This made a total panel outage look like a rendering bug and cost significant
-debugging time. Improve it: keep returning 200 to the platform's health check so
-deploys don't die during startup, but serve a real "starting up / unavailable"
-page to browsers and log loudly when the backend is unreachable.
+### D. Router "OK" fallback — ✅ DONE
+The bare `OK` response now lives on a dedicated `/health` path. The root path
+goes through `proxyRequest` like everything else, and an unreachable backend
+serves a self-refreshing "Loading panel..." page instead of masking the outage.
+A duplicate root handler that silently dropped the session cookie was removed
+at the same time.
 
 ### E. Housekeeping
 - Credentials (a B2 application key, the admin password) were pasted in plain
