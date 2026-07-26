@@ -177,9 +177,67 @@ function ensureStableSessionKey() {
   }
 }
 
+/**
+ * The web panel auto-discovers the daemon by reading global.json, but assigns
+ * it a *random* UUID.  The middleware hardcodes a different fixed UUID when it
+ * creates instances and writes them into the user's instance list.  Because
+ * getInstancesByUuid looks up the daemon by that stored daemonId, a mismatch
+ * means the panel can never find the daemon → status stays -1 ("Under
+ * Maintenance") for every instance.
+ *
+ * Fix: pre-create a RemoteServiceConfig entry with a deterministic UUID *and*
+ * the correct daemon key/port before the web panel boots.  The panel's
+ * initialize() finds it, loads it, and connects — skipping the random-UUID
+ * auto-discovery path entirely.  The middleware reads the same file at runtime
+ * to obtain the daemon UUID, so both sides agree.
+ */
+const DAEMON_UUID = 'omen-daemon-local';
+
+function ensureDaemonRemoteConfig() {
+  const rcDir = path.join(BASE_DIR, 'mcsmanager/web/data/RemoteServiceConfig');
+  const rcPath = path.join(rcDir, DAEMON_UUID + '.json');
+  if (fs.existsSync(rcPath)) return;   // already bootstrapped
+
+  // Read the daemon's actual key + port from global.json
+  const globalPath = path.join(BASE_DIR, 'mcsmanager/daemon/data/Config/global.json');
+  let daemonKey = '', daemonPort = 24444;
+  try {
+    const g = JSON.parse(fs.readFileSync(globalPath, 'utf8'));
+    daemonKey = g.key || '';
+    daemonPort = g.port || 24444;
+  } catch {
+    console.warn('[bootstrap] Could not read daemon global.json — RemoteServiceConfig may need manual setup.');
+    return;
+  }
+
+  try {
+    fs.mkdirSync(rcDir, { recursive: true });
+    fs.writeFileSync(rcPath, JSON.stringify({
+      ip: 'localhost',
+      port: daemonPort,
+      prefix: '',
+      remarks: 'Local Daemon',
+      apiKey: daemonKey,
+      remoteMappings: [],
+      connectOpts: {
+        multiplex: false,
+        reconnectionDelayMax: 5000,
+        timeout: 10000,
+        reconnection: true,
+        reconnectionAttempts: 10,
+        rejectUnauthorized: false
+      }
+    }, null, 4));
+    console.log(`[bootstrap] Pre-created RemoteServiceConfig (uuid=${DAEMON_UUID}, port=${daemonPort}) — panel and middleware will agree on daemon identity.`);
+  } catch (err) {
+    console.error('[bootstrap] Failed to write RemoteServiceConfig:', err.message);
+  }
+}
+
 function bootstrap() {
   ensureStableSessionKey();
   ensureReverseProxyConfig();
+  ensureDaemonRemoteConfig();
   bootstrapAdminIfNeeded();
 }
 

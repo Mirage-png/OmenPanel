@@ -20,10 +20,41 @@ process.on('unhandledRejection', (err) => console.error('[process] Unhandled rej
 
 const PORT = 29999;
 const DAEMON_PORT = 24444;
-const DAEMON_ID = '8912fa8ad2c947b183e6f783558e9f21';
 const WEB_PORT = 23333;
 const BASE_DIR = path.resolve(__dirname, '..');
 const DATA_DIR = path.join(BASE_DIR, 'omen-data');
+
+/**
+ * Discover the daemon's MCSManager UUID from the web panel's RemoteServiceConfig.
+ *
+ * bootstrap-admin.js pre-creates this file with a deterministic UUID before
+ * the web panel boots, so both the panel and this middleware agree on the
+ * daemon identity.  On a legacy install where the file doesn't exist yet,
+ * fall back to reading whichever UUID is present in the directory.
+ */
+function getDaemonId() {
+  const rcDir = path.join(BASE_DIR, 'mcsmanager/web/data/RemoteServiceConfig');
+  try {
+    const files = fs.readdirSync(rcDir).filter(f => f.endsWith('.json'));
+    if (files.length > 0) {
+      // Prefer the deterministic UUID created by bootstrap-admin.js
+      const preferred = files.find(f => f.replace('.json', '') === 'omen-daemon-local');
+      return (preferred || files[0]).replace('.json', '');
+    }
+  } catch { /* dir missing on first boot */ }
+
+  // Last resort: generate a stable ID from the daemon key so the value at
+  // least stays consistent across middleware restarts within the same deploy.
+  try {
+    const g = JSON.parse(fs.readFileSync(path.join(BASE_DIR, 'mcsmanager/daemon/data/Config/global.json'), 'utf8'));
+    return crypto.createHash('sha256').update(g.key || '').digest('hex').slice(0, 32);
+  } catch { /* no daemon config yet */ }
+
+  return 'omen-daemon-local';
+}
+
+let DAEMON_ID = getDaemonId();
+console.log(`[middleware] Daemon ID: ${DAEMON_ID}`);
 
 /**
  * Admin credentials the middleware uses to call the web panel's own admin API
