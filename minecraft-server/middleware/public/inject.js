@@ -296,19 +296,78 @@
     tag.setAttribute('data-omen-dot', '1');
   }
 
-  // ─── Login page: signup link + modal ──────────────────────────
-  // A small persistent link to the standalone /create page — the create-server
-  // flow itself was never removed, only its old promotional-banner entry point
-  // was, so this is the only way a logged-in user could reach it otherwise.
-  function addCreateServerLink() {
-    if ((window.location.hash || '').includes('/login')) return;
-    if (document.querySelector('.omen-create-link')) return;
+  // ─── My Application dashboard: Create Server button + modal ───
+  // Lives inside the panel's own "Instance List" card header rather than as
+  // a floating link to a separate page, so creating a server is part of the
+  // dashboard someone is already looking at instead of a detour off it.
+  function addCreateServerButton() {
+    if (document.querySelector('.omen-dash-create-btn')) return;
 
-    var link = el('a', 'omen-create-link', '+ Create Server');
-    link.href = '/create';
-    link.target = '_blank';
-    link.rel = 'noopener';
-    document.body.appendChild(link);
+    var titleEl = findExactText('Instance List');
+    var header = titleEl && titleEl.closest('.card-panel-title');
+    if (!header) return;   // not on the My Application dashboard right now
+
+    var btn = el('button', 'omen-dash-create-btn', '+ Create Server');
+    btn.type = 'button';
+    header.appendChild(btn);
+    btn.addEventListener('click', showCreateServerModal);
+  }
+
+  function showCreateServerModal() {
+    if (document.querySelector('.omen-create-modal')) return;
+
+    var modal = buildModal('omen-create-modal',
+      '<h2 class="omen-modal__title">Create Minecraft Server</h2>' +
+      '<p class="omen-modal__sub">Instantly create a server with Minekube Connect</p>' +
+      '<div class="omen-field"><label>Server Name</label>' +
+        '<input id="omen-create-name" type="text" placeholder="my-server" maxlength="30"></div>' +
+      '<div class="omen-msg omen-msg--err" id="omen-create-error" style="display:none"></div>' +
+      '<div class="omen-modal__actions">' +
+        '<button class="omen-btn omen-btn--ghost" id="omen-create-cancel" type="button">Cancel</button>' +
+        '<button class="omen-btn" id="omen-create-submit" type="button">Create Server</button>' +
+      '</div>');
+
+    var errEl = modal.querySelector('#omen-create-error');
+    var submit = modal.querySelector('#omen-create-submit');
+
+    modal.querySelector('#omen-create-cancel').onclick = function () { modal.remove(); };
+
+    submit.onclick = function () {
+      var name = modal.querySelector('#omen-create-name').value.trim() || 'minecraft-server';
+
+      errEl.style.display = 'none';
+      submit.disabled = true;
+      submit.textContent = 'Creating...';
+
+      getJSON('/api/omen/whoami').then(function (who) {
+        return fetch('/api/omen/create-server', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nickname: name, userUuid: (who && who.uuid) || '' })
+        });
+      })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+        .then(function (res) {
+          if (res.ok && res.data && !res.data.error) {
+            modal.remove();
+            // The panel's own instance list has no cheap "refresh" hook to
+            // call into from outside its Vue app, so a reload is what
+            // actually shows the server that was just created.
+            window.location.reload();
+          } else {
+            errEl.textContent = (res.data && res.data.error) || 'Failed to create server';
+            errEl.style.display = 'block';
+            submit.disabled = false;
+            submit.textContent = 'Create Server';
+          }
+        })
+        .catch(function () {
+          errEl.textContent = 'Connection error';
+          errEl.style.display = 'block';
+          submit.disabled = false;
+          submit.textContent = 'Create Server';
+        });
+    };
   }
 
   function addSignupLink() {
@@ -892,7 +951,7 @@
     addIpBox();
     addStatusIndicator();
     addSignupLink();
-    addCreateServerLink();
+    addCreateServerButton();
     checkQueueStatus();
     renderBackupBox();
     addManageInstanceCards();

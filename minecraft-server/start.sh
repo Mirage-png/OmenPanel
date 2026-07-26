@@ -55,9 +55,17 @@ start_service() {
   local name="$1"; shift
   local pidf="$PID_DIR/$name.pid"
   local logf="$LOG_DIR/$name.log"
-  "$@" >> "$logf" 2>&1 &
-  echo $! > "$pidf"
-  echo "  Started $name (PID $!)"
+  # Launched fully detached (see spawn-detached.js) so it survives this
+  # script's own process group being signalled — e.g. the shell that ran
+  # start.sh exiting, or a tool harness tearing down its own child.
+  local pid
+  pid=$("$NODE" "$BASE_DIR/middleware/spawn-detached.js" "$logf" "$@")
+  if [ -z "$pid" ]; then
+    echo "  [FAIL] Could not start $name"
+    return 1
+  fi
+  echo "$pid" > "$pidf"
+  echo "  Started $name (PID $pid)"
 }
 
 restart_service() {

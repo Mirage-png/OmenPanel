@@ -61,9 +61,16 @@ start_service() {
   local name="$1"; shift
   local pidfile="$PID_DIR/$name.pid"
   local logfile="$LOG_DIR/$name.log"
-  "$@" >> "$logfile" 2>&1 &
-  echo $! > "$pidfile"
-  echo "  Started $name (PID $!)"
+  # Launched fully detached (see spawn-detached.js) so it survives this
+  # script's own process group being signalled.
+  local pid
+  pid=$("$NODE" "$BASE_DIR/middleware/spawn-detached.js" "$logfile" "$@")
+  if [ -z "$pid" ]; then
+    echo "  [FAIL] Could not start $name"
+    return 1
+  fi
+  echo "$pid" > "$pidfile"
+  echo "  Started $name (PID $pid)"
 }
 
 # Replit's deployment log only captures this script's own stdout/stderr —
