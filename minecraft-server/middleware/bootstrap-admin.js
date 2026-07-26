@@ -138,7 +138,47 @@ function bootstrapAdminIfNeeded() {
   }
 }
 
+/**
+ * The web panel derives both its session cookie's *name* and its signing key
+ * from data/.session-key, generating a fresh random one whenever that file is
+ * absent. That directory is gitignored and, on an ephemeral filesystem, wiped
+ * on every deploy — so each release silently invalidates every existing
+ * login. The browser keeps sending a cookie the server no longer recognises,
+ * the identity lookup 403s, and the panel reports "Unable to retrieve
+ * identity data, may be banned or network issue".
+ *
+ * Pinning the key to a secret makes sessions survive redeploys. Without one
+ * the panel still works, but everyone is logged out by every deploy.
+ */
+function ensureStableSessionKey() {
+  const keyFile = path.join(BASE_DIR, 'mcsmanager/web/data/.session-key');
+  const fromEnv = (process.env.OMEN_SESSION_KEY || '').trim();
+
+  let current = '';
+  try { current = fs.readFileSync(keyFile, 'utf8').trim(); } catch { /* not created yet */ }
+
+  try {
+    if (fromEnv) {
+      if (current === fromEnv) return;
+      fs.mkdirSync(path.dirname(keyFile), { recursive: true });
+      fs.writeFileSync(keyFile, fromEnv);
+      console.log('[bootstrap] Session key pinned from OMEN_SESSION_KEY — logins now survive redeploys.');
+      return;
+    }
+
+    if (current) return;   // persistent disk kept the previous key; leave it alone
+
+    fs.mkdirSync(path.dirname(keyFile), { recursive: true });
+    fs.writeFileSync(keyFile, crypto.randomUUID());
+    console.warn('[bootstrap] OMEN_SESSION_KEY is not set, so a throwaway session key was generated.');
+    console.warn('[bootstrap] Every deploy will log all users out until that secret is set to a fixed random string.');
+  } catch (err) {
+    console.error('[bootstrap] Could not pin the session key:', err.message);
+  }
+}
+
 function bootstrap() {
+  ensureStableSessionKey();
   ensureReverseProxyConfig();
   bootstrapAdminIfNeeded();
 }
