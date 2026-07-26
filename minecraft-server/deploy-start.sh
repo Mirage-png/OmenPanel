@@ -15,6 +15,10 @@ fi
 
 export NODE_ENV=production
 
+# Default admin credentials for bootstrapping (overridable via Replit Secrets)
+export OMEN_ADMIN_USERNAME="${OMEN_ADMIN_USERNAME:-admin}"
+export OMEN_ADMIN_PASSWORD="${OMEN_ADMIN_PASSWORD:-OmenHosting2024!}"
+
 # Heap sizes tuned to fit a 2GB Reserved VM with headroom left for the
 # Minecraft JVM itself (~512MB-1GB per running instance). Bump these via
 # env vars if the deployment is sized larger.

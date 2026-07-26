@@ -10,6 +10,7 @@ const MIDDLEWARE = { host: '127.0.0.1', port: 29999 };
 // the script is deferred because none of it needs to run before parse.
 const THEME_LINK = `<link rel="stylesheet" href="/api/omen/theme.css">`;
 const INJECT_SCRIPT = THEME_LINK + `<script defer src="/api/omen/inject.js"></script>`;
+const LOADING_PAGE = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta http-equiv="refresh" content="2"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Loading...</title><style>body{background:#0b0e14;color:#2ecc71;font-family:sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;font-size:20px}</style></head><body>Loading panel...</body></html>`;
 
 /**
  * The real client IP, for the X-Real-IP header the web panel reads to apply
@@ -220,16 +221,17 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // Healthcheck + proxy
+  // Healthcheck endpoint — always returns OK so the platform never confuses it
+  // with the actual panel response. Probers (Cloud Run, Replit) send no Accept
+  // header, but some synthetic monitors do, so match on path alone.
+  if (parsed.pathname === '/health') {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('OK');
+    return;
+  }
+
+  // Panel root — proxies to the real web panel with theme/script injection.
   if (parsed.path === '/' && req.method === 'GET') {
-    // Check if it's a simple health check (no Accept header or from Cloud Run)
-    const ua = (req.headers['user-agent'] || '');
-    const accept = (req.headers['accept'] || '');
-    if (!accept.includes('text/html') && !ua.includes('Mozilla')) {
-      res.writeHead(200, { 'Content-Type': 'text/plain' });
-      res.end('OK');
-      return;
-    }
     // Proxy real page from web panel with inject script
     const proxyReq = http.request({ hostname: WEB.host, port: WEB.port, path: '/', method: 'GET', timeout: 10000 }, (upstream) => {
       const ct = upstream.headers['content-type'] || '';
@@ -258,8 +260,19 @@ const server = http.createServer((req, res) => {
         upstream.pipe(res, { end: true });
       }
     });
-    proxyReq.on('error', () => { if (!res.headersSent) { res.writeHead(200, { 'Content-Type': 'text/plain' }); res.end('OK'); } });
-    proxyReq.on('timeout', () => { proxyReq.destroy(); if (!res.headersSent) { res.writeHead(200, { 'Content-Type': 'text/plain' }); res.end('OK'); } });
+    proxyReq.on('error', () => {
+      if (!res.headersSent) {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(LOADING_PAGE);
+      }
+    });
+    proxyReq.on('timeout', () => {
+      proxyReq.destroy();
+      if (!res.headersSent) {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(LOADING_PAGE);
+      }
+    });
     proxyReq.end();
     return;
   }
