@@ -297,6 +297,20 @@
   }
 
   // ─── Login page: signup link + modal ──────────────────────────
+  // A small persistent link to the standalone /create page — the create-server
+  // flow itself was never removed, only its old promotional-banner entry point
+  // was, so this is the only way a logged-in user could reach it otherwise.
+  function addCreateServerLink() {
+    if ((window.location.hash || '').includes('/login')) return;
+    if (document.querySelector('.omen-create-link')) return;
+
+    var link = el('a', 'omen-create-link', '+ Create Server');
+    link.href = '/create';
+    link.target = '_blank';
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+  }
+
   function addSignupLink() {
     if (!(window.location.hash || '').includes('/login')) return;
     if (document.querySelector('.omen-signup-link')) return;
@@ -878,6 +892,7 @@
     addIpBox();
     addStatusIndicator();
     addSignupLink();
+    addCreateServerLink();
     checkQueueStatus();
     renderBackupBox();
     addManageInstanceCards();
