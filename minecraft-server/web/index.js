@@ -108,10 +108,24 @@ function proxyRequest(req, res, target, body) {
   });
 
   proxy.on('error', () => {
-    if (!res.headersSent) { res.writeHead(502); res.end('Service starting...'); }
+    if (!res.headersSent) {
+      if (target === WEB) {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(LOADING_PAGE);
+      } else {
+        res.writeHead(502);
+        res.end('Service starting...');
+      }
+    }
   });
 
-  proxy.on('timeout', () => { proxy.destroy(); });
+  proxy.on('timeout', () => {
+    proxy.destroy();
+    if (!res.headersSent && target === WEB) {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(LOADING_PAGE);
+    }
+  });
 
   if (body !== undefined) {
     // Stream already drained by the start-request inspection.
@@ -227,53 +241,6 @@ const server = http.createServer((req, res) => {
   if (parsed.pathname === '/health') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('OK');
-    return;
-  }
-
-  // Panel root — proxies to the real web panel with theme/script injection.
-  if (parsed.path === '/' && req.method === 'GET') {
-    // Proxy real page from web panel with inject script
-    const proxyReq = http.request({ hostname: WEB.host, port: WEB.port, path: '/', method: 'GET', timeout: 10000 }, (upstream) => {
-      const ct = upstream.headers['content-type'] || '';
-      if (ct.includes('text/html')) {
-        const chunks = [];
-        upstream.on('data', (c) => chunks.push(c));
-        upstream.on('end', () => {
-          try {
-            let body = Buffer.concat(chunks).toString('utf8');
-            if (body.includes('</head>')) body = body.replace('</head>', INJECT_SCRIPT + '</head>');
-            else if (body.includes('</body>')) body = body.replace('</body>', INJECT_SCRIPT + '</body>');
-            else body += INJECT_SCRIPT;
-            const headers = { ...upstream.headers };
-            headers['content-length'] = Buffer.byteLength(body);
-            delete headers['content-encoding'];
-            delete headers['transfer-encoding'];
-            res.writeHead(upstream.statusCode, headers);
-            res.end(body);
-          } catch(e) {
-            if (!res.headersSent) { res.writeHead(500); res.end('Error'); }
-          }
-        });
-        upstream.on('error', () => { if (!res.headersSent) { res.writeHead(502); res.end('Bad Gateway'); } });
-      } else {
-        res.writeHead(upstream.statusCode, upstream.headers);
-        upstream.pipe(res, { end: true });
-      }
-    });
-    proxyReq.on('error', () => {
-      if (!res.headersSent) {
-        res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end(LOADING_PAGE);
-      }
-    });
-    proxyReq.on('timeout', () => {
-      proxyReq.destroy();
-      if (!res.headersSent) {
-        res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end(LOADING_PAGE);
-      }
-    });
-    proxyReq.end();
     return;
   }
 
