@@ -1,109 +1,126 @@
-# OmenHosting — Engineering Handoff v2.0
+# OmenHosting (MCSManager) — Engineering Handoff
 
-Everything needed to work on this project without rediscovering it.
+Everything needed to work on this without rediscovering it.
 **Read this fully before changing anything.**
 
-- Live: `https://omen-panel--bussinessprivat.replit.app/`
-- Repo: `https://github.com/jasontchen0325-wq/OmenPanel`
-- Host: Replit **Autoscale** (2 vCPU / 4 GiB / max 1). Staying on Replit is a
-  settled decision — do not re-litigate it. Design around it (see §4).
+- Repo: `https://github.com/jasontchen0325-wq/OmenPanel2.git` (also pushed to `OmenPanel`)
+- Base: **MCSManager** (open source) + a custom middleware layer
+- Immediate goal: **run it on localhost**. It is 95% there; §7 has the one
+  remaining blocker, already diagnosed.
+
+There was a parallel experiment building a panel from scratch
+(`Omenhostingpanel` repo). That is **abandoned** — this MCSManager-based panel
+is the one being taken forward.
 
 ---
 
-## 1. What this is
-
-A Minecraft hosting panel built on **MCSManager** (open source), plus a custom
-middleware layer adding a themed UI, cloud backups, a Modrinth mod installer,
-resource stats, a start queue, and auto-sleep.
-
-It is **stateful**: worlds, user accounts, and instance configs live on disk.
-
----
-
-## 2. Architecture — four Node processes
+## 1. Architecture — four Node processes
 
 | Service | Port | Directory | Role |
 |---|---|---|---|
-| **router** | 3000 | `minecraft-server/web/index.js` | Public entry. Reverse-proxies the other three. Zero external deps (Node core only). |
+| **router** | 3000 | `minecraft-server/web/index.js` | Public entry. Reverse-proxies the other three and injects the theme. |
 | **mcsm-daemon** | 24444 | `minecraft-server/mcsmanager/daemon` | Runs the actual Minecraft processes. |
 | **mcsm-web** | 23333 | `minecraft-server/mcsmanager/web` | MCSManager panel (Vue SPA + Koa API). |
-| **middleware** | 29999 | `minecraft-server/middleware/server.js` | OmenHosting layer. All `/api/omen/*` + UI injection. |
+| **middleware** | 29999 | `minecraft-server/middleware/server.js` | All custom OmenHosting features. |
 
-Only port **3000** is public (`externalPort 80` in `.replit`).
+Only **3000** is public. Routing lives in `getBackend()`:
+`/socket.io`, `/upload-*`, `/download/` → daemon · `/api/omen/*`, `/create` →
+middleware · everything else → web panel.
 
-**Routing** (`web/index.js` → `getBackend()`):
-- `/socket.io`, `/upload-*`, `/download/` → daemon
-- `/api/omen/*`, `/create` → middleware
-- everything else → web panel
+---
 
-The router injects `theme.css` + `inject.js` into HTML responses to skin the
-panel without forking MCSManager's frontend.
+## 2. What is custom (this is the work to preserve)
+
+MCSManager itself is upstream code. Everything below was written for this
+project and is what makes it OmenHosting rather than stock MCSManager.
+
+```
+minecraft-server/middleware/
+  server.js            main service: routes, auto-sleep, queue, signup,
+                       instance creation, Minekube address detection
+  bootstrap-admin.js   pre-boot: pins session key, enables reverse-proxy
+                       mode, creates/reconciles the admin account
+  install-libs.js      downloads MCSManager's native binaries for the
+                       current OS/arch (pty, file_zip, 7z)
+  stats.js             per-instance CPU / RAM / disk from the OS
+  public/theme.css     the green-on-dark skin, injected into the panel
+  public/inject.js     injected UI: resource panel, server-address box,
+                       queue modal, backup box, mod browser, signup link,
+                       "+ Create Server" button
+  backup/              archive.js (zip + real CRC-32 verification),
+                       manager.js (retention, shrink guard), history.js
+  storage/             b2.js (Backblaze B2 native API), local.js,
+                       index.js (provider factory), provider.js
+  mods/modrinth.js     plugin/mod search + install, host-restricted
+  test/run-tests.js    regression suite (npm test / npm run test:live)
+```
+
+The theme is applied by **injection**, not by forking MCSManager's frontend —
+`web/index.js` rewrites HTML responses to add `theme.css` and `inject.js`.
+That is deliberate: MCSManager can be upgraded without redoing the skin.
 
 ---
 
 ## 3. Boot sequence — the order is load-bearing
 
-From `deploy-start.sh` (production) / `start.sh` (dev Run button):
+From `minecraft-server/start.sh`:
 
-1. **router** first — no external deps, so it opens the health-checked port in
-   milliseconds instead of timing out behind an npm install.
-2. `npm ci` fallback for missing `node_modules` (normally done by
-   `[deployment].build` in `.replit`).
-3. `middleware/install-libs.js` — downloads MCSManager's native binaries
-   (pty, file_zip, 7z) for the **current** OS/arch.
-4. **mcsm-daemon**.
-5. `middleware/bootstrap-admin.js` — **must run before mcsm-web starts.** It:
-   - pins the session key (§7)
-   - enables reverse-proxy mode (§7)
-   - creates/reconciles the admin account
-   MCSManager loads users into memory once at boot and never re-reads them, so
-   anything written after mcsm-web starts is invisible until the next restart.
-6. **mcsm-web**.
-7. **middleware**.
-8. Monitor loop: restart dead services, max 5 per 10 min each, with backoff.
-   Rotates logs over 10MB.
+1. **router** first (no external deps, opens the port immediately)
+2. `install-libs.js` — platform binaries
+3. **mcsm-daemon**
+4. `bootstrap-admin.js` — **must run before mcsm-web starts.** MCSManager
+   loads its user list into memory once at boot and never re-reads it, so an
+   account created afterwards is invisible until the next restart.
+5. **mcsm-web**
+6. **middleware**
+7. Monitor loop: restart dead services, max 5 per 10 min, with backoff.
 
-All four services' logs are streamed into the main process's stdout with
-`[service-name]` prefixes, because the platform's Logs panel only captures the
-top-level process. **This is the only way to see real crash output.** Note the
-platform's log view is *lossy* — it drops and reorders lines, so absence of a
-line is not evidence.
+All four services' logs are streamed into the supervisor's stdout with
+`[service-name]` prefixes.
 
 ---
 
-## 4. THE CORE CONSTRAINT — ephemeral filesystem
+## 4. Configuration
 
-Autoscale wipes the container filesystem on every deploy and can recycle the
-instance at any time. Therefore:
-
-> **Anything that must survive has to live in git, in Secrets, or in B2.
-> Treat the local disk as a scratchpad that vanishes without warning.**
-
-Everything that has gone wrong on this project traces back to violating that
-rule. The app must be able to fully reconstruct itself on a cold start from
-environment variables plus cloud backups. Where it can't yet, that's a bug.
-
-Known consequences to design around:
-- Sessions die on redeploy unless the signing key is pinned → `OMEN_SESSION_KEY`
-- Admin account vanishes → recreated by `bootstrap-admin.js`
-- Panel config resets to defaults → rewritten by `bootstrap-admin.js`
-- **Minecraft worlds vanish → only B2 backups can save them. Not yet configured.**
-- A running server is killed when the instance idles to zero.
-
----
-
-## 5. Configuration (Replit → Secrets)
-
-| Variable | Status | Purpose |
+| Variable | Required | Purpose |
 |---|---|---|
-| `OMEN_ADMIN_USERNAME` | optional | Admin username (default `admin`) |
-| `OMEN_ADMIN_PASSWORD` | **required** | Admin password. No default; bootstrap skips without it. |
-| `OMEN_SESSION_KEY` | **required** | Fixed random string. Without it **every deploy logs all users out** (§7). |
-| `B2_KEY_ID`, `B2_APPLICATION_KEY`, `B2_BUCKET`, `B2_BUCKET_ID` | **not set — should be** | Backblaze B2 backups. Currently falls back to `local`, which is wiped on redeploy. |
-| `BACKUP_PROVIDER` | | `local` or `b2` |
-| `BACKUP_COMPRESSION_LEVEL`, `BACKUP_STORE_PRECOMPRESSED`, `BACKUP_REMOTE_ROOT`, `BACKUP_LOCAL_PATH` | optional | Backup tuning |
-| `OMEN_TRUSTED_PROXY_HOPS` | optional | Proxy hops in front of the router (default 3, §7) |
-| `OMEN_DAEMON_HEAP_MB` / `OMEN_WEB_HEAP_MB` / `OMEN_MIDDLEWARE_HEAP_MB` / `OMEN_ROUTER_HEAP_MB` | optional | Per-service V8 heap caps (512/512/256/128) |
+| `OMEN_SESSION_KEY` | **yes** | Fixed random string. Without it **every restart logs all users out** (§6). |
+| `OMEN_ADMIN_USERNAME` | no | Defaults to `admin`. |
+| `OMEN_ADMIN_PASSWORD` | **yes** | Admin password; no default. |
+| `B2_KEY_ID`, `B2_APPLICATION_KEY`, `B2_BUCKET` | recommended | Backblaze B2 backups. Without these backups fall back to local disk. |
+| `BACKUP_PROVIDER` | no | `local` or `b2` |
+| `PROXY_PORT` | no | Router port, default 3000 |
+| `OMEN_TRUSTED_PROXY_HOPS` | no | Proxy hops in front of the router (§6) |
+
+---
+
+## 5. Running it locally — current state
+
+Verified working on this machine (macOS, Node v26.5.0, Java 25.0.2):
+
+```bash
+cd minecraft-server
+# deps (already installed here)
+for d in . mcsmanager/daemon mcsmanager/web; do (cd $d && npm ci --omit=dev); done
+node middleware/install-libs.js          # darwin_arm64 binaries
+
+OMEN_SESSION_KEY=local-dev-fixed-key \
+OMEN_ADMIN_USERNAME=admin \
+OMEN_ADMIN_PASSWORD=OmenLocal12345 \
+PROXY_PORT=3000 \
+bash start.sh
+```
+
+Then open `http://127.0.0.1:3000/`.
+
+**Confirmed working:** all four services start, the daemon/web link validates
+(`key validation successful`), the login page renders with the green theme and
+the injected "Create Account" link, login succeeds, the instance list shows all
+8 existing instances, the "+ Create Server" button appears, and the Server
+Queue modal appears on opening an instance.
+
+Existing local state: **6 user accounts, 8 instances**. Admin password was
+re-synced to `OmenLocal12345` by the bootstrap during testing.
 
 ---
 
@@ -111,146 +128,117 @@ Known consequences to design around:
 
 | Bug | Fix |
 |---|---|
-| `setsid` used to launch every service, unavailable in this container — background jobs died silently, port 3000 never opened | Removed; unnecessary since scripts run as the container's main process |
-| Scripts hardcoded a bundled Node binary path that was never committed | Use the Nix-provisioned `node` on `PATH` |
-| Root `package-lock.json` drifted → `npm ci` failed → fallback pulled `tar@7.5.14`, blocked by the platform firewall as a CVE | Regenerated lockfile; pinned `tar@7.5.22` |
-| Build step's last loop iteration returned non-zero, failing the whole build despite every install succeeding | Restructured loop + trailing `true` |
-| Dependency installs ran at boot, blowing the health-check window | Moved to `[deployment].build`; router starts first regardless |
-| No auto-restart in production | Monitor loop with crash-loop backoff |
-| Per-service logs invisible to the platform | `tail -F` streamed into main stdout with prefixes |
-| macOS binaries committed; wrong arch for the Linux container | `install-libs.js` downloads correct per-platform binaries |
+| `setsid` used to launch services but unavailable in the container — jobs died silently, port 3000 never opened | Removed; unnecessary as the script is the main process |
+| Scripts hardcoded a bundled Node binary path that was never committed | Use `node` from `PATH` |
+| Root `package-lock.json` drifted → `npm ci` failed → fallback pulled `tar@7.5.14`, blocked as a CVE | Regenerated lockfile; pinned `tar@7.5.22` |
+| Build step returned non-zero on a directory with no `package.json`, failing the whole build | Restructured loop + trailing `true` |
+| Dependency installs at boot blew the health-check window | Moved to a build step; router starts first |
+| Per-service logs invisible to the platform | `tail -F` streamed into main stdout |
+| macOS binaries committed; wrong arch for Linux | `install-libs.js` downloads per-platform |
 | Fresh deploy had no admin account → signup returned "Admin authentication failed" | `bootstrap-admin.js` creates it pre-boot |
-| `reverseProxyMode: false` → every visitor resolved to `127.0.0.1` → 10 failed logins banned **everyone** | Bootstrap enables reverse-proxy mode; router sets `X-Real-IP` |
-| Ban *still* global: router took the **rightmost** `X-Forwarded-For`, which is the platform's load balancer — shared by all and rotating per request | Count back 3 trusted hops from the end (§7) |
-| Duplicate root handler dropped all cookies/headers on `/` | Removed; everything goes through `proxyRequest` |
-| Bare `OK` fallback masked total outages | Moved to `/health`; unreachable backend serves a self-refreshing loading page |
-| "Create Server" unreachable — its only entry point was deleted with a removed banner | Persistent "+ Create Server" link restored (the `/create` page and API were always intact) |
+| `reverseProxyMode: false` → every visitor resolved to `127.0.0.1` → 10 failed logins banned **everyone** | Bootstrap enables it; router sets `X-Real-IP` |
+| Ban *still* global: router took the **rightmost** `X-Forwarded-For`, which is the platform's load balancer — shared and rotating | Count back `OMEN_TRUSTED_PROXY_HOPS` (3) from the end |
+| **Every deploy logged all users out** — the session cookie's name *and* signing key come from `data/.session-key`, regenerated whenever that gitignored file is missing | Pinned from `OMEN_SESSION_KEY` before boot |
 | Hardcoded admin password in source (3 sites) | Env vars only |
-| Rotating `OMEN_ADMIN_PASSWORD` silently did nothing | Bootstrap reconciles the stored hash each boot |
-| Signup failures always said "Failed to create user"; a 200 with an error envelope was treated as success | Read the panel's `data` field; treat error envelopes as failures |
-| **Every deploy logged all users out** → "Unable to retrieve identity data" | Session key pinned from `OMEN_SESSION_KEY` (§7) |
+| Queue: 5 separate bugs (race in `queueStartNext`, slot leak on failed upload, wrong daemon event field, bare-string rejections, `url.query` on a `URL` object) | All fixed |
+| Backups: `yauzl` validates size but not CRC, so corrupt-but-same-length archives passed | Real CRC-32 verification |
+| B2 uploads failed on slow links (Node's 250 ms `autoSelectFamilyAttemptTimeout`) and were not retried at the streaming-body level | Widened to 30 s; retry wraps the body |
+| "Create Server" unreachable — its only entry point was deleted with a removed banner | Persistent "+ Create Server" link restored |
 
 ---
 
-## 7. MCSManager behaviours that will waste your time
+## 7. THE ONE REMAINING BLOCKER
 
-**API requires `x-requested-with: xmlhttprequest`.** Without it, API routes
-return `404` — an auth guard that looks like a missing route. Any `curl` test
-without this header gives misleading results.
+`start.sh` works, but the services do not survive the launching shell exiting.
 
-**Session key = cookie name AND signing key.** Patched into `web/app.js`:
-```js
-const __sessionKeyFile = path.join(process.cwd(), "data", ".session-key");
-// generates a fresh uuid if the file is missing
-app.keys = [__stableKey];
-app.use(koa_session({ key: __stableKey, ... }))
-```
-`data/` is gitignored and wiped on deploy, so a new key was generated every
-release, instantly invalidating every login. The browser then presents a cookie
-the server doesn't recognise, `/api/auth/` 403s, and the SPA shows
-*"Unable to retrieve identity data, may be banned or network issue"*.
-`bootstrap-admin.js` now writes this file from `OMEN_SESSION_KEY`.
+**Symptom:** router (3000) and daemon (24444) come up, then die seconds later
+with `Received SIGTERM signal from the system`. The web panel and middleware
+sometimes survive. Restarting produces the same result.
 
-**IP ban.** `loginCheckIp` defaults true; >10 failed logins bans that IP for
-10 minutes. In-memory, so restarting `mcsm-web` clears it. `ctx.ip` comes from
-`X-Real-IP` only when `reverseProxyMode` is on — both must stay in sync.
+**Diagnosis:** `start.sh` installs `trap cleanup SIGINT SIGTERM`, and `cleanup`
+kills every PID in `.pids/`. When the shell that launched the script exits, the
+process group is signalled, the trap fires, and the supervisor takes its own
+children down with it. On Linux this was avoided with `setsid`, which **does
+not exist on macOS**, so there is nothing detaching the supervisor from the
+launching shell's process group.
 
-**The proxy chain has 3 rotating hops.** Measured via `GET /api/omen/debug/ip`:
-```
-plain request   -> 35.144.47.23, 34.117.33.233, 35.191.147.240, 34.67.115.235
-forged XFF sent -> 1.2.3.4, 35.144.47.23, 34.117.33.233, 35.191.102.185, 136.115.212.231
-```
-`35.144.47.23` was the caller's real address. Client-supplied values are
-**prepended**; trailing entries are load balancers that differ per request.
-Never take the last entry, never trust the first — count back from the end.
-That endpoint is live and is the fastest way to re-derive this if the topology
-changes.
+**Fix — pick one:**
 
-**Users load once at boot.** Writing a user file while the panel runs has no
-effect until restart.
+1. **Run the four services directly, no supervisor.** Simplest for local dev:
+   ```bash
+   cd minecraft-server
+   node web/index.js &
+   (cd mcsmanager/daemon && node app.js) &
+   node middleware/bootstrap-admin.js
+   (cd mcsmanager/web && node app.js) &
+   node middleware/server.js &
+   ```
+   Order matters — see §3.
 
-**`app.js` is a webpack bundle.** Readable, but don't hand-patch it — change
-behaviour via config or the middleware layer. (The session-key block above is a
-pre-existing patch; leave it, it's now driven by the secret.)
+2. **Detach the supervisor properly.** Wrap the launch so it is not in the
+   caller's process group. `nohup` alone was not sufficient in testing;
+   something equivalent to `setsid` is needed. On macOS, `python3 -c
+   "import os,subprocess; os.setsid(); subprocess.run(['bash','start.sh'])"`
+   or a `launchd`/`pm2`-style manager works.
 
----
+3. **Make the trap discriminate.** Only run `cleanup` on an explicit stop
+   request rather than on any SIGTERM, so an incidental group signal does not
+   tear everything down.
 
-## 8. Verified working (tested against the live deployment)
-
-- Root page, `/create`, `theme.css`, `inject.js`, `/health` → 200
-- `/api/omen/status`, `instances`, `settings`, `check-user`, `backup/status`,
-  `queue/count`, `debug/ip` → 200
-- `/api/overview` unauthenticated → 403 (auth correctly enforced)
-- Signup validation, and the admin-auth path (tested with an existing username,
-  which fails at the duplicate check *after* admin auth — creating nothing)
-- Login endpoint returns correct structured responses
-- Client IP resolves to the real visitor and ignores forged `X-Forwarded-For`
-  and `X-Real-IP`
-- Daemon healthy: `key validation successful`, no `[RESTART]` lines
-
-## 9. NOT verified — the real gap
-
-**Nothing behind the login has ever been tested on the live deployment.** No
-one has logged in and exercised the dashboard, file manager, mod installer,
-backups, resource stats, or the queue.
-
-**No Minecraft server has ever been created end-to-end in production.**
-`/api/omen/instances` returns `[]`. That is the panel's entire purpose and it
-is completely untested. Everything above is plumbing.
+Option 1 is enough to see the panel running; option 2 or 3 is the real fix.
 
 ---
 
-## 10. Remaining work, in priority order
+## 8. MCSManager behaviours that will waste your time
 
-### A. Set the two missing secrets — highest value, lowest effort
-- `OMEN_SESSION_KEY` — any fixed random string. Until set, **every deploy logs
-  everyone out**; the bootstrap now warns loudly in the logs when it's missing.
-- `B2_KEY_ID` / `B2_APPLICATION_KEY` / `B2_BUCKET` (+ `BACKUP_PROVIDER=b2`).
-  Backups currently report `{"provider":"local"}` — written to a disk that is
-  wiped on redeploy, i.e. no backups at all. On ephemeral hosting B2 is the
-  *only* thing that can make worlds survive.
-
-Then redeploy and confirm in the logs:
-```
-[bootstrap] Session key pinned from OMEN_SESSION_KEY
-[backup] Ready using "b2" storage
-```
-
-### B. Prove the core flow works
-Log in, create a server, start it, confirm it reaches "running", and confirm a
-backup lands in B2. Until this is done the panel is unproven. Expect problems
-here — it is the least-tested path in the system.
-
-### C. Make cold starts non-destructive
-Given §4, a recycled instance should restore its instances from B2 rather than
-come back empty. `/api/omen/prestart` and the restore path exist for exactly
-this but have never been exercised in production. Verify a server survives a
-redeploy; if it doesn't, that is the most important bug left.
-
-### D. Loose ends
-- `/api/auth/sso/config` returns 500 (SSO disabled, page renders fine —
-  cosmetic, uninvestigated).
-- `backupRetention = 1` — only one backup is kept.
-- `/api/omen/debug/ip` is a diagnostic endpoint; harmless (echoes only the
-  caller's own headers) but can be removed once the topology is settled.
-- Credentials pasted in plaintext during development (a B2 key, the admin
-  password) should be rotated. They are not in the repo.
+- **The API requires `x-requested-with: xmlhttprequest`.** Without it, routes
+  return `404` — an auth guard that looks like a missing route. Any `curl` test
+  without this header gives misleading results.
+- **Session key = cookie name AND signing key**, from `data/.session-key`.
+  Losing that file logs everyone out. Pinned via `OMEN_SESSION_KEY`.
+- **IP ban:** `loginCheckIp` defaults true; >10 failed logins bans that IP for
+  10 minutes. In-memory, so restarting `mcsm-web` clears it.
+- **Users load once at boot.** Writing a user file while running has no effect
+  until restart.
+- **`app.js` is a webpack bundle.** Readable, but do not hand-patch it; change
+  behaviour through config or the middleware layer. (The session-key block is a
+  pre-existing patch, now driven by the secret.)
+- **The browser talks to the daemon over WebSocket**, using
+  `mcsmanager/web/data/RemoteServiceConfig/*.json` → `remoteMappings`. It was
+  pointing at a dead tunnel domain; for local use it must map the
+  browser-facing origin to the router:
+  ```json
+  "remoteMappings": [{ "from": {"ip":"127.0.0.1","port":3000,"prefix":"/"},
+                       "to":   {"ip":"ws://127.0.0.1","port":3000,"prefix":""} }]
+  ```
+  Already applied locally. **This has to be updated for whatever host the panel
+  is served from**, or the console shows "Unable to Connect to Remote Daemon".
+- **BSD vs GNU `du`:** the daemon calls `du -s --block-size=1M`, which fails on
+  macOS. Harmless for the panel; affects instance size reporting only.
 
 ---
 
-## 11. Rules of engagement
+## 9. Remaining work
 
-1. **Measure, don't guess.** The ban bug was "fixed" twice from plausible
-   reasoning about proxy behaviour and was wrong both times. A diagnostic
-   endpoint settled it in ten minutes. If a claim about the environment can be
-   tested, test it before writing the fix.
+1. **Fix the process-detachment blocker** (§7) so `start.sh` survives.
+2. **Set B2 secrets** — backups currently fall back to local disk.
+3. **Exercise the custom features end to end.** Reachable but not verified in
+   this session: the mod/plugin browser, the backup box, auto-sleep, and the
+   queue actually promoting a server. The queue *modal* renders; automatic
+   promotion has not been observed here.
+4. **Update `remoteMappings`** whenever the serving host changes (§8).
+
+---
+
+## 10. Rules of engagement
+
+1. **Measure, don't guess.** The IP-ban bug was "fixed" twice from plausible
+   reasoning about proxy behaviour and was wrong both times; a diagnostic
+   endpoint settled it in ten minutes.
 2. **Never commit secrets.** Env vars only.
-3. **Never commit `data/` directories.** Real accounts, keys, worlds.
+3. **Never commit `data/` directories** — real accounts, access keys, worlds.
 4. **Never commit platform-specific binaries.** Download at boot.
 5. **Verify on fresh state.** Nearly every bug here slipped through because it
    worked on a machine that already had good local data.
-6. **The platform's log view is lossy.** A missing line is not evidence of
-   anything.
-7. **Don't test by creating accounts on production.** To exercise the signup
-   admin-auth path, sign up with an *existing* username: MCSManager's duplicate
-   check throws before any account is written.
+6. **A green test suite is not evidence a button works.** Most user-visible
+   breakage in this project was UI wired to endpoints that did not exist.
