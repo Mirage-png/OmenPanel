@@ -20,6 +20,10 @@ MIDDLEWARE_HEAP="${OMEN_MIDDLEWARE_HEAP_MB:-256}"
 ROUTER_HEAP="${OMEN_ROUTER_HEAP_MB:-128}"
 GC_FLAGS="--optimize-for-size --gc-interval=100 --max-semi-space-size=32"
 
+# Default admin credentials for bootstrapping (overridable via Replit Secrets)
+export OMEN_ADMIN_USERNAME="${OMEN_ADMIN_USERNAME:-admin}"
+export OMEN_ADMIN_PASSWORD="${OMEN_ADMIN_PASSWORD:-OmenAdmin2026!}"
+
 echo "Starting OmenHosting supervisor..."
 
 install_if_needed() {
