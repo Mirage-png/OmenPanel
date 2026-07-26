@@ -912,8 +912,23 @@ function handleSignup(req, res) {
 
       // Create user via web panel's admin API (adds to in-memory cache + writes file)
       const createResp = await webRequest('POST', `/api/auth/?token=${adminToken}`, { username, password, permission: 1 }, adminCookie);
-      if (createResp.status !== 200) {
-        const errMsg = createResp.data?.error || createResp.data?.message || 'Failed to create user';
+
+      // The panel reports failures two ways: a non-200 HTTP status, or a 200
+      // carrying an error envelope. Checking only the former would report a
+      // rejected signup as success.
+      const created = createResp.data;
+      const envelopeFailed = created && typeof created === 'object'
+        && created.status !== undefined && created.status !== 200;
+
+      if (createResp.status !== 200 || envelopeFailed) {
+        // The panel puts its human-readable reason (e.g. "Username is already
+        // taken") in the envelope's `data` field, so surface that instead of a
+        // generic message the person signing up can't act on.
+        const errMsg =
+          (created && typeof created.data === 'string' && created.data)
+          || created?.error
+          || created?.message
+          || 'Failed to create user';
         return sendJSON(res, 409, { error: errMsg });
       }
       console.log(`[signup] New user created: ${username}`);
