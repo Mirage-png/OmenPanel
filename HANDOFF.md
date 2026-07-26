@@ -119,6 +119,8 @@ must be **generated at boot by a script**, not committed as a data file.
 | Per-service logs invisible to the platform Logs panel | `tail -F` streamed into main stdout with prefixes |
 | Fresh deploy had no admin account, so signup's admin auth had nothing to log into | `bootstrap-admin.js` creates it pre-boot |
 | `reverseProxyMode: false` → every visitor resolved to `127.0.0.1` → 10 failed logins banned the **entire panel** for everyone | Bootstrap enables reverse-proxy mode; router sets `X-Real-IP` |
+| Ban still global after that fix: the router took the **rightmost** `X-Forwarded-For` entry, which on this platform is the provider's load balancer — shared by all visitors and rotating between requests | Count back 3 trusted hops from the end (`TRUSTED_PROXY_HOPS`, overridable via `OMEN_TRUSTED_PROXY_HOPS`). Measured, not guessed — see §7 |
+| Signup failures always reported the generic "Failed to create user", hiding the real reason; a 200 carrying an error envelope was also treated as success | Read the panel's `data` field for the human-readable reason and treat error envelopes as failures |
 | macOS binaries committed; wrong arch for the deploy container | `install-libs.js` downloads correct per-platform binaries |
 | "Create Server" unreachable — its only entry point was deleted along with a removed banner | Restored a persistent "+ Create Server" link (the `/create` page and API were always intact) |
 | Hardcoded admin password in source (3 call sites) | Replaced with `OMEN_ADMIN_USERNAME`/`OMEN_ADMIN_PASSWORD` env vars |
@@ -136,6 +138,17 @@ must be **generated at boot by a script**, not committed as a data file.
   has no effect until restart.
 - **`ctx.ip`** comes from the `X-Real-IP` header only when `reverseProxyMode` is
   on. Both must stay in sync or bans go global again.
+- **The proxy chain has 3 hops in front of the router, and they rotate.**
+  Measured on the live deployment via `GET /api/omen/debug/ip`:
+  ```
+  plain request   -> 35.144.47.23, 34.117.33.233, 35.191.147.240, 34.67.115.235
+  forged XFF sent -> 1.2.3.4, 35.144.47.23, 34.117.33.233, 35.191.102.185, 136.115.212.231
+  ```
+  `35.144.47.23` was the caller's real address. A client-supplied value is
+  **prepended**, and the trailing entries are platform load balancers that
+  differ request to request — so never take the last entry, and never trust
+  the first. Count back from the end. That endpoint is still live and is the
+  fastest way to re-derive this if the platform's topology ever changes.
 - `app.js` is a **webpack bundle** — readable, but don't try to patch it. Change
   behavior via config or the middleware layer instead.
 
