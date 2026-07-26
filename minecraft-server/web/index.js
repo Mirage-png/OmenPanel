@@ -13,19 +13,38 @@ const INJECT_SCRIPT = THEME_LINK + `<script defer src="/api/omen/inject.js"></sc
 const LOADING_PAGE = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta http-equiv="refresh" content="2"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Loading...</title><style>body{background:#0b0e14;color:#2ecc71;font-family:sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;font-size:20px}</style></head><body>Loading panel...</body></html>`;
 
 /**
- * The real client IP, for the X-Real-IP header the web panel reads to apply
- * its per-IP login-failure ban. Without this every visitor looks like
- * 127.0.0.1 (this router) and one visitor's failed logins ban everyone.
+ * Number of proxies the hosting platform puts between the visitor and this
+ * router, each of which appends one X-Forwarded-For entry.
  *
- * The rightmost X-Forwarded-For entry is the one appended by the closest
- * trusted proxy (the platform edge); entries to its left can be forged by
- * the client, so they are deliberately not used.
+ * Measured on the live deployment rather than assumed:
+ *   plain request   -> 35.144.47.23, 34.117.33.233, 35.191.147.240, 34.67.115.235
+ *   forged XFF sent -> 1.2.3.4, 35.144.47.23, 34.117.33.233, 35.191.102.185, 136.115.212.231
+ * where 35.144.47.23 was the caller's real public address. In both cases the
+ * true client sits 3 entries from the end, and a forged value is *prepended*,
+ * so counting from the right both lands on the right entry and cannot be
+ * shifted by anything the client sends. Overridable in case the platform's
+ * topology changes.
+ */
+const TRUSTED_PROXY_HOPS = Number(process.env.OMEN_TRUSTED_PROXY_HOPS || 3);
+
+/**
+ * The real client IP, for the X-Real-IP header the web panel reads to apply
+ * its per-IP login-failure ban. Without this every visitor resolves to the
+ * same address and a single visitor's failed logins lock out everyone.
+ *
+ * Taking the last entry is wrong here: those are the platform's own load
+ * balancers, shared by every visitor *and* rotating between requests.
  */
 function clientIp(req) {
   const xff = req.headers['x-forwarded-for'];
   if (xff) {
     const parts = String(xff).split(',').map((s) => s.trim()).filter(Boolean);
-    if (parts.length) return parts[parts.length - 1];
+    if (parts.length) {
+      const idx = parts.length - 1 - TRUSTED_PROXY_HOPS;
+      // Short chain means fewer proxies than expected (direct/internal call),
+      // where the leftmost entry is the closest thing to an origin address.
+      return idx >= 0 ? parts[idx] : parts[0];
+    }
   }
   return req.socket.remoteAddress || '';
 }
