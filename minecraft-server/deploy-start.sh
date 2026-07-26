@@ -81,6 +81,9 @@ install_if_needed "$BASE_DIR/mcsmanager/daemon"
 install_if_needed "$BASE_DIR/mcsmanager/web"
 install_if_needed "$BASE_DIR/middleware"
 
+echo "[3/4] Ensuring architecture-specific lib binaries..."
+"$NODE" "$BASE_DIR/middleware/install-libs.js"
+
 echo "[3/4] Starting MCSManager daemon..."
 start_service mcsm-daemon bash -c "cd '$BASE_DIR/mcsmanager/daemon' && exec '$NODE' --max-old-space-size=$DAEMON_HEAP $GC_FLAGS app.js"
 sleep 3

@@ -83,6 +83,9 @@ install_if_needed "$BASE_DIR/mcsmanager/daemon"
 install_if_needed "$BASE_DIR/mcsmanager/web"
 install_if_needed "$BASE_DIR/middleware"
 
+echo "  Ensuring architecture-specific lib binaries..."
+"$NODE" "$BASE_DIR/middleware/install-libs.js"
+
 restart_service mcsm-daemon
 sleep 3
 

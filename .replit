@@ -13,7 +13,6 @@ externalPort = 3001
 [[ports]]
 localPort = 24444
 externalPort = 3000
-exposeLocalhost = true
 
 [deployment]
 build = ["sh", "-c", "cd minecraft-server && for d in . mcsmanager/daemon mcsmanager/web middleware; do if [ -f \"$d/package.json\" ]; then (cd \"$d\" && (npm ci --omit=dev --no-audit --no-fund || npm install --omit=dev --no-audit --no-fund)); fi; done; true"]
