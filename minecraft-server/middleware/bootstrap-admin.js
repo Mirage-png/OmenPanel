@@ -55,6 +55,48 @@ function ensureReverseProxyConfig() {
   }
 }
 
+/**
+ * The account is only ever *created* when no users exist, so rotating
+ * OMEN_ADMIN_PASSWORD afterwards used to do nothing at all — the secret
+ * changed, the stored hash didn't, and the new value silently never took
+ * effect. The env var is the configured source of truth for this deployment,
+ * so bring the stored hash back in line with it when they diverge.
+ *
+ * Only the admin account named by OMEN_ADMIN_USERNAME is touched; every other
+ * user's credentials are left alone. Note this means a password changed
+ * through the panel UI is reset on the next boot — the secret wins by design.
+ */
+function reconcileAdminPassword(userDir, username, password, files) {
+  let bcrypt;
+  try {
+    bcrypt = require(path.join(BASE_DIR, 'mcsmanager/web/node_modules/bcryptjs'));
+  } catch (err) {
+    console.error('[bootstrap] Cannot verify admin password (bcryptjs unavailable):', err.message);
+    return;
+  }
+
+  for (const file of files) {
+    const userPath = path.join(userDir, file);
+    let user;
+    try { user = JSON.parse(fs.readFileSync(userPath, 'utf8')); } catch { continue; }
+    if (user.userName !== username || user.permission !== 10) continue;
+
+    let matches = false;
+    try { matches = bcrypt.compareSync(password, user.passWord || ''); } catch { /* legacy/!bcrypt hash */ }
+    if (matches) return;
+
+    user.passWord = bcrypt.hashSync(password, 10);
+    user.passWordType = 1;
+    try {
+      fs.writeFileSync(userPath, JSON.stringify(user, null, 4));
+      console.log(`[bootstrap] Admin "${username}" password re-synced from OMEN_ADMIN_PASSWORD.`);
+    } catch (err) {
+      console.error('[bootstrap] Failed to update admin password:', err.message);
+    }
+    return;
+  }
+}
+
 function bootstrapAdminIfNeeded() {
   const userDir = path.join(BASE_DIR, 'mcsmanager/web/data/User');
   const username = process.env.OMEN_ADMIN_USERNAME || 'admin';
@@ -67,7 +109,7 @@ function bootstrapAdminIfNeeded() {
 
   fs.mkdirSync(userDir, { recursive: true });
   const existing = fs.readdirSync(userDir).filter((f) => f.endsWith('.json'));
-  if (existing.length > 0) return;
+  if (existing.length > 0) return reconcileAdminPassword(userDir, username, password, existing);
 
   try {
     const bcrypt = require(path.join(BASE_DIR, 'mcsmanager/web/node_modules/bcryptjs'));
