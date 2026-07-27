@@ -41,15 +41,20 @@ function ensureReverseProxyConfig() {
   let cfg = {};
   try { cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8')); } catch { /* fresh install */ }
 
-  if (cfg.reverseProxyMode === true && cfg.reverseProxyHeader === 'X-Real-IP') return;
+  const needsUpdate = cfg.reverseProxyMode !== true
+    || cfg.reverseProxyHeader !== 'X-Real-IP'
+    || cfg.loginCheckIp !== false;
+
+  if (!needsUpdate) return;
 
   cfg.reverseProxyMode = true;
   cfg.reverseProxyHeader = 'X-Real-IP';
+  cfg.loginCheckIp = false;
 
   try {
     fs.mkdirSync(cfgDir, { recursive: true });
     fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 4));
-    console.log('[bootstrap] Enabled reverse-proxy mode (X-Real-IP) so login bans apply per visitor, not globally.');
+    console.log('[bootstrap] SystemConfig: reverseProxyMode + loginCheckIp=false — brute-force IP ban disabled (panel is behind Replit proxy, ban logic causes false positives).');
   } catch (err) {
     console.error('[bootstrap] Failed to write panel SystemConfig:', err.message);
   }
