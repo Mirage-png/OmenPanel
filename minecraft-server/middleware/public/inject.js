@@ -618,6 +618,22 @@
   }
 
   /**
+   * MCSManager's own "Mod & Plugin Manager" card duplicates our injected mod
+   * browser (one of MOD_CARDS above) and isn't wired to anything host-scoped
+   * the way ours is, so it's removed outright rather than left as a second,
+   * confusing entry point.
+   */
+  function removeModManagerCard() {
+    var list = document.querySelector('.function-btns-container');
+    if (!list) return;
+    var textEl = findExactText('Mod & Plugin Manager');
+    if (!textEl) return;
+    var node = textEl;
+    while (node && node.parentNode !== list) node = node.parentNode;
+    if (node && node.parentNode === list) node.remove();
+  }
+
+  /**
    * Find the element most likely to be the card's title: the deepest node that
    * still carries a short, non-"Go" text label.
    */
@@ -955,6 +971,7 @@
     checkQueueStatus();
     renderBackupBox();
     addManageInstanceCards();
+    removeModManagerCard();
     renderResourceUsage();
   }
 

@@ -81,13 +81,21 @@ function proxyRequest(req, res, target, body) {
   const wantsHtml = (req.headers['accept'] || '').includes('text/html');
   if (target === WEB && wantsHtml) headers['accept-encoding'] = 'identity';
 
+  // Uploads/downloads to the daemon are large, slow file transfers on
+  // whatever connection the visitor has — a 10s *inactivity* timeout is fine
+  // for ordinary API calls, but a momentary stall on a slow upload (mobile
+  // network hiccup, a browser pause between chunks) kills the daemon
+  // connection mid-transfer, leaving a truncated file on disk. That silent
+  // truncation is what surfaces later as "invalid or corrupt jarfile" when
+  // the server tries to start a server.jar that never finished uploading.
+  const isDaemonTransfer = target === DAEMON;
   const opts = {
     hostname: target.host,
     port: target.port,
     path: req.url,
     method: req.method,
     headers,
-    timeout: 10000
+    timeout: isDaemonTransfer ? 600000 : 10000
   };
 
   const proxy = http.request(opts, (upstream) => {

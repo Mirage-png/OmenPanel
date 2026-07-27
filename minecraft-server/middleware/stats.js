@@ -39,10 +39,16 @@ function run(cmd, args) {
 }
 
 /**
- * Find the pid of the process whose current working directory is exactly
- * `targetDir`. Returns null if none is found (server not running).
+ * Find every pid whose current working directory is exactly `targetDir`.
+ * There is usually more than one match: MCSManager launches each instance
+ * through a PTY helper process (for interactive terminal support — see
+ * `pty_darwin_arm64`/`pty_linux_*` in install-libs.js), which chdirs into the
+ * instance directory and then execs the actual `java` process as its child.
+ * Both end up with the identical cwd, so a naive "first match wins" scan
+ * — which this function used to be — returns the idle PTY wrapper instead of
+ * the JVM doing the actual work, reporting ~0% CPU for a server under load.
  */
-async function findPidByCwd(targetDir) {
+async function findPidsByCwd(targetDir) {
   // Both `/proc/<pid>/cwd` and `lsof` report the fully resolved path (e.g.
   // macOS's /tmp -> /private/tmp), so the comparison side must be resolved the
   // same way or every match silently fails on a symlinked path.
@@ -50,25 +56,27 @@ async function findPidByCwd(targetDir) {
   try {
     resolved = fs.realpathSync(targetDir);
   } catch {
-    return null; // directory does not exist -> nothing can be running in it
+    return []; // directory does not exist -> nothing can be running in it
   }
+
+  const matches = [];
 
   if (process.platform === 'linux') {
     let pids;
     try {
       pids = fs.readdirSync('/proc').filter((n) => /^\d+$/.test(n));
     } catch {
-      return null;
+      return [];
     }
     for (const pid of pids) {
       try {
         const cwd = fs.readlinkSync(`/proc/${pid}/cwd`);
-        if (cwd === resolved) return Number(pid);
+        if (cwd === resolved) matches.push(Number(pid));
       } catch {
         // Process exited mid-scan, or we lack permission — not our process.
       }
     }
-    return null;
+    return matches;
   }
 
   // macOS / other: no /proc, so ask lsof which pids have this dir open as cwd.
@@ -79,13 +87,42 @@ async function findPidByCwd(targetDir) {
     for (const line of out.split('\n')) {
       if (line.startsWith('p')) currentPid = Number(line.slice(1));
       else if (line.startsWith('n') && currentPid && line.slice(1) === resolved) {
-        return currentPid;
+        matches.push(currentPid);
       }
     }
   } catch {
-    return null;
+    return [];
   }
-  return null;
+  return matches;
+}
+
+/** Process name for a pid via `ps`, e.g. "java" or "pty_darwin_arm64". */
+async function commandNameForPid(pid) {
+  try {
+    const out = await run('ps', ['-o', 'comm=', '-p', String(pid)]);
+    return out.trim();
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Among every process sharing the instance's cwd, pick the one actually
+ * running the server rather than whichever a plain scan happens to find
+ * first (the PTY wrapper, launched before its java child — see
+ * findPidsByCwd's doc comment). Falls back to the first match if nothing
+ * looks like a JVM, so this still works for any future non-Java process type.
+ */
+async function findPidByCwd(targetDir) {
+  const candidates = await findPidsByCwd(targetDir);
+  if (candidates.length === 0) return null;
+  if (candidates.length === 1) return candidates[0];
+
+  for (const pid of candidates) {
+    const name = await commandNameForPid(pid);
+    if (/java/i.test(name)) return pid;
+  }
+  return candidates[0];
 }
 
 /** %CPU and resident set size for a pid, via `ps` (no native deps). */
@@ -123,6 +160,16 @@ function directorySize(dir) {
 }
 
 /**
+ * A daemon-side `pidusage(instance.process.pid)` reading was tried here first
+ * (reached over a plain `instance/detail` request — see ProcessInfoCommand in
+ * the daemon — rather than the OS-level scan below). It measured the wrong
+ * process: MCSManager launches every instance through a PTY helper for
+ * terminal support, so `instance.process` in the daemon *is* the PTY, not the
+ * java process it execs as a child. That reading was consistently ~0%/a few
+ * MB regardless of real load, which is exactly the bug this file exists to
+ * avoid. findPidByCwd()'s process-name disambiguation (below) fixes the same
+ * problem at its actual source instead.
+ *
  * @param {string} serverDir  Absolute path to the instance's working directory.
  * @returns {Promise<{
  *   running: boolean, pid: number|null,

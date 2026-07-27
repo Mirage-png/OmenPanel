@@ -57,6 +57,28 @@ The old code that used to compute this (`scripts/supervisor.sh`) targeted the no
 
 **This is a separate concern from §6** — state sync means a redeploy doesn't lose data; it does not make multiple simultaneous Autoscale instances consistent with each other. Both fixes are needed for the panel to be fully correct on Replit.
 
+### 8. CPU always showed 0.0% — measured live, not guessed
+
+**Root cause:** MCSManager launches every instance through a PTY helper process for terminal support (`pty_darwin_arm64`/`pty_linux_*`), which chdirs into the instance directory and then execs the actual `java` process as its child. Both processes end up with the *identical* cwd. `stats.js`'s `findPidByCwd()` used to return the first cwd match it found, which — verified live by actually starting a real Purpur server and inspecting both PIDs — is the idle PTY wrapper, not the JVM doing the work. The daemon's own internal `pidusage(instance.process.pid)` tracking (used by its live terminal stat display) has the exact same bug, since `instance.process` in the daemon *is* the PTY; an attempt to read CPU/memory through that channel instead (`instance/detail` → `ProcessInfoCommand`) was tried and measured the same wrong process, then reverted.
+
+**Fix:** `findPidByCwd()` now collects *every* pid sharing the instance's cwd and picks the one whose command name matches `java`, falling back to the first match only if none do (`middleware/stats.js`). Verified end to end: started a real server, confirmed the fixed endpoint returns the JVM's actual pid with realistic non-zero CPU/memory, and confirmed it correctly reports offline once the process exits.
+
+### 9. Server address changed on every restart
+
+**Root cause:** the Minekube Connect plugin's own bundled `config.yml` documents an `endpoint:` field — "Default is a random string. You can change it to a custom endpoint name" — but the config OmenHosting generates for it never set that field, so the plugin always fell through to its own random default on every boot.
+
+**Fix:** `installMinekubePlugin()`/`ensureMinekubeConfig()` in `server.js` now writes `endpoint: <instanceUuid>` into the plugin's config, pinning the address to something stable per-instance. Also patches this retroactively into any instance's config that predates the fix and is missing the line — takes effect on that instance's next restart. Also fixed a bug in the same function where this config-patching code was unreachable whenever the plugin jar already existed on disk (the common case for any already-running server) — restructured so config/properties patches always run, independent of whether the jar itself needed downloading.
+
+### 10. Custom server.jar uploads intermittently "corrupt"
+
+**Root cause (likely, not fully provable without reproducing on a slow connection):** the router (`web/index.js`) applied a blanket 10-second *inactivity* socket timeout to every proxied request, including large file uploads/downloads proxied to the daemon (`/upload-new`, `/upload-piece`, `/upload/`, `/download/`). A momentary stall on a slow or mobile connection kills that connection mid-transfer, leaving a truncated file on disk — which then fails to start with the JVM's own "invalid or corrupt jarfile" error, since nothing else in this stack produces a message containing the word "corrupt."
+
+**Fix:** requests proxied to the daemon now get a 10-minute timeout instead of 10 seconds; ordinary API/page requests to the web panel or middleware are unaffected.
+
+### 11. Removed MCSManager's native "Mod & Plugin Manager" card
+
+Redundant with OmenHosting's own injected mod browser and confusing as a second entry point — removed outright per explicit request. `removeModManagerCard()` in `inject.js`.
+
 ## Boot sequence (deploy-start.sh)
 
 1. Router starts (port 3000 — health check)
