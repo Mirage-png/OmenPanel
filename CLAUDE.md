@@ -2,7 +2,7 @@
 
 ## What was fixed
 
-Two bugs in the OmenHosting panel: admin login failure and all instances stuck on "Under Maintenance."
+Three bugs in the OmenHosting panel: admin login failure, all instances stuck on "Under Maintenance," and "Unable to retrieve identity data" error.
 
 ### 1. Admin login failure
 
@@ -22,7 +22,7 @@ Two bugs in the OmenHosting panel: admin login failure and all instances stuck o
 
 ### 3. "Unable to retrieve identity data" / IP ban false positives
 
-**Root cause:** MCSManager's `loginCheckIp` (default `true`) bans an IP for 10 minutes after12 failed login attempts. On Replit, without `reverseProxyMode`, all visitors appear as `127.0.0.1` — a single failed login attempt by anyone (or the middleware's own admin-auth calls) bans every user. Even with `reverseProxyMode`, the middleware connects directly to `127.0.0.1:23333` without the X-Real-IP header, so its failed login attempts always register as `127.0.0.1`.
+**Root cause:** MCSManager's `loginCheckIp` (default `true`) bans an IP for 10 minutes after 12 failed login attempts. On Replit, without `reverseProxyMode`, all visitors appear as `127.0.0.1` — a single failed login attempt by anyone (or the middleware's own admin-auth calls) bans every user. Even with `reverseProxyMode`, the middleware connects directly to `127.0.0.1:23333` without the X-Real-IP header, so its failed login attempts always register as `127.0.0.1`.
 
 **Changes:**
 - `minecraft-server/middleware/bootstrap-admin.js` — `ensureReverseProxyConfig()` now sets `loginCheckIp: false` alongside `reverseProxyMode: true`. This disables IP-based brute-force protection entirely. The panel is behind Replit's own auth layer, so this protection is redundant and causes false-positive bans that surface as "Unable to retrieve identity data, may be banned or network issue."
