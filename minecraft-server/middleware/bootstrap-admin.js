@@ -198,10 +198,31 @@ function ensureStableSessionKey() {
  */
 const DAEMON_UUID = 'omen-daemon-local';
 
+/**
+ * The browser reaches the daemon's console/upload sockets over WebSocket via
+ * `remoteMappings`: it maps the panel's own public origin to that same origin
+ * over ws(s), and the router (web/index.js) proxies /socket.io through to the
+ * daemon from there — the daemon itself is never exposed directly. Get this
+ * wrong and every instance's console fails with "Unable to Connect to Remote
+ * Daemon" even though the panel-to-daemon connection (and instance status)
+ * is completely healthy.
+ *
+ * On Replit, REPLIT_DOMAINS gives the real public hostname (behind TLS, so
+ * port 443 / wss). Locally there's no such domain, so map back to whatever
+ * port the router itself is actually listening on.
+ */
+function computeRemoteMappings() {
+  const replitDomain = (process.env.REPLIT_DOMAINS || '').split(',')[0].trim();
+  if (replitDomain) {
+    return [{ from: { ip: replitDomain, port: 443, prefix: '/' }, to: { ip: `wss://${replitDomain}`, port: 443, prefix: '' } }];
+  }
+  const port = Number(process.env.PROXY_PORT || 3000);
+  return [{ from: { ip: '127.0.0.1', port, prefix: '/' }, to: { ip: 'ws://127.0.0.1', port, prefix: '' } }];
+}
+
 function ensureDaemonRemoteConfig() {
   const rcDir = path.join(BASE_DIR, 'mcsmanager/web/data/RemoteServiceConfig');
   const rcPath = path.join(rcDir, DAEMON_UUID + '.json');
-  if (fs.existsSync(rcPath)) return;   // already bootstrapped
 
   // Read the daemon's actual key + port from global.json
   const globalPath = path.join(BASE_DIR, 'mcsmanager/daemon/data/Config/global.json');
@@ -215,25 +236,35 @@ function ensureDaemonRemoteConfig() {
     return;
   }
 
+  const desired = {
+    ip: 'localhost',
+    port: daemonPort,
+    prefix: '',
+    remarks: 'Local Daemon',
+    apiKey: daemonKey,
+    remoteMappings: computeRemoteMappings(),
+    connectOpts: {
+      multiplex: false,
+      reconnectionDelayMax: 5000,
+      timeout: 10000,
+      reconnection: true,
+      reconnectionAttempts: 10,
+      rejectUnauthorized: false
+    }
+  };
+
+  // Re-sync on every boot, not just first creation — the daemon's key can
+  // rotate and the serving host can change between deploys, and a stale
+  // apiKey/remoteMappings silently breaks the daemon link or the console
+  // until someone notices and deletes this file by hand.
+  let existing = null;
+  try { existing = JSON.parse(fs.readFileSync(rcPath, 'utf8')); } catch { /* first boot */ }
+  if (existing && JSON.stringify(existing) === JSON.stringify(desired)) return;
+
   try {
     fs.mkdirSync(rcDir, { recursive: true });
-    fs.writeFileSync(rcPath, JSON.stringify({
-      ip: 'localhost',
-      port: daemonPort,
-      prefix: '',
-      remarks: 'Local Daemon',
-      apiKey: daemonKey,
-      remoteMappings: [],
-      connectOpts: {
-        multiplex: false,
-        reconnectionDelayMax: 5000,
-        timeout: 10000,
-        reconnection: true,
-        reconnectionAttempts: 10,
-        rejectUnauthorized: false
-      }
-    }, null, 4));
-    console.log(`[bootstrap] Pre-created RemoteServiceConfig (uuid=${DAEMON_UUID}, port=${daemonPort}) — panel and middleware will agree on daemon identity.`);
+    fs.writeFileSync(rcPath, JSON.stringify(desired, null, 4));
+    console.log(`[bootstrap] RemoteServiceConfig synced (uuid=${DAEMON_UUID}, port=${daemonPort}, remoteMappings for ${desired.remoteMappings[0].from.ip}).`);
   } catch (err) {
     console.error('[bootstrap] Failed to write RemoteServiceConfig:', err.message);
   }
