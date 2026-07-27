@@ -41,14 +41,33 @@ The old code that used to compute this (`scripts/supervisor.sh`) targeted the no
 
 **Fix:** `ensureDaemonRemoteConfig()` now computes `remoteMappings` itself — `REPLIT_DOMAINS`:443 over `wss://` on Replit, `127.0.0.1:$PROXY_PORT` over `ws://` locally — and re-syncs the whole config file on every boot (not just first creation), since the daemon's key or the serving host can change between deploys.
 
+### 6. Regular (signup) accounts intermittently fail identity checks — deployment config, not code
+
+**Root cause:** `.replit`'s `deploymentTarget = "cloudrun"` is Replit's **Autoscale** type, which can run multiple separate container instances behind a load balancer. This panel is entirely stateful — accounts, sessions, and worlds all live in local files/memory with nothing shared across instances. Proven live: created a signup account, logged in successfully, then asked the panel's own admin user-list for it — it didn't exist. Only `admin` was present, because `bootstrap-admin.js` recreates that identically on *every* instance at boot; a runtime signup only exists on whichever single instance happened to handle that request. Any later request landing on a different instance sees a session/account it's never heard of, surfacing as "Unable to retrieve identity data." The random "Loading panel..." page some visitors see is a fresh instance still cold-starting.
+
+`deploy-start.sh`'s own comment ("tuned to fit a 2GB **Reserved VM**") confirms this was designed for a single persistent machine, not autoscaled Cloud Run.
+
+**Fix is a deployment setting, not code:** switch the Replit deployment type from **Autoscale** to **Reserved VM**. Nothing in this repo can work around multiple non-communicating instances of a single-server-state app.
+
+### 7. Whole-panel state persistence ("republishing deletes everything")
+
+**Root cause:** independent of §6, Replit's filesystem is wiped on every redeploy regardless of deployment type. `bootstrap-admin.js` already works around this for accounts/daemon-identity by recreating them deterministically at every boot, but a Minecraft world isn't deterministic — it has to actually survive somewhere durable.
+
+**Fix:** `minecraft-server/middleware/state-sync.js` (+ `restore-state.js` / `save-state.js`) snapshots `mcsmanager/web/data`, `InstanceConfig`, and `InstanceData` to whichever S3-compatible bucket `BACKUP_PROVIDER=s3` (or `b2`) points at — added `minecraft-server/middleware/storage/s3.js`, a dependency-free S3-compatible provider (hand-rolled SigV4, verified live against Filebase). Restore runs once before `mcsm-daemon` starts (must be before it — same "loads config once at boot" constraint as everything else here); save runs on a timer and once more on `SIGTERM`, which is what a "republish" actually sends before tearing the container down. Fully inert if no `BACKUP_PROVIDER` is configured. See `middleware/storage/README.md` for the full design and env vars.
+
+**This is a separate concern from §6** — state sync means a redeploy doesn't lose data; it does not make multiple simultaneous Autoscale instances consistent with each other. Both fixes are needed for the panel to be fully correct on Replit.
+
 ## Boot sequence (deploy-start.sh)
 
 1. Router starts (port 3000 — health check)
-2. Daemon starts (port 24444 — writes `global.json` with random key)
-3. `sleep 3`
-4. `bootstrap-admin.js` runs — creates admin account, pre-creates RemoteServiceConfig with daemon's actual key
-5. Web panel starts (port 23333 — finds pre-created config, connects to daemon with matching UUID)
-6. Middleware starts (port 29999 — reads RemoteServiceConfig to discover daemon UUID)
+2. Deps installed, lib binaries ensured
+3. `restore-state.js` — pulls saved state from S3/B2 if configured (**must** be before the daemon starts)
+4. Daemon starts (port 24444 — writes `global.json` with random key, loads restored InstanceConfig)
+5. `sleep 3`
+6. `bootstrap-admin.js` runs — creates admin account, pre-creates RemoteServiceConfig with daemon's actual key + correct remoteMappings
+7. Web panel starts (port 23333 — finds pre-created config, connects to daemon with matching UUID)
+8. Middleware starts (port 29999 — reads RemoteServiceConfig to discover daemon UUID)
+9. A `SIGTERM`/`SIGINT` trap runs `save-state.js` synchronously before exit; a background timer also runs it every `STATE_SYNC_INTERVAL_SECONDS` (default 600)
 
 ## Key files
 
@@ -56,6 +75,8 @@ The old code that used to compute this (`scripts/supervisor.sh`) targeted the no
 - `minecraft-server/start.sh` — dev entrypoint
 - `minecraft-server/middleware/bootstrap-admin.js` — pre-boot script (admin creation, daemon config, session key, reverse proxy)
 - `minecraft-server/middleware/server.js` — middleware service (auto-sleep, signup, Minekube Connect)
+- `minecraft-server/middleware/state-sync.js` (+ `restore-state.js`, `save-state.js`) — whole-panel state persistence across redeploys
+- `minecraft-server/middleware/storage/s3.js` — dependency-free S3-compatible storage provider (Filebase, AWS S3, R2, MinIO)
 - `minecraft-server/web/index.js` — HTTP router (ports 3000/23333/24444/29999)
 - `minecraft-server/mcsmanager/web/data/RemoteServiceConfig/` — daemon connection configs
 - `minecraft-server/mcsmanager/daemon/data/Config/global.json` — daemon config (key, port)
@@ -65,3 +86,16 @@ The old code that used to compute this (`scripts/supervisor.sh`) targeted the no
 - `OMEN_ADMIN_USERNAME=admin`
 - `OMEN_ADMIN_PASSWORD=OmenAdmin2026!`
 - `OMEN_SESSION_KEY` — auto-generated per deploy (sessions break on redeploy until set as Secret)
+- `BACKUP_PROVIDER` — defaults to `local`; state sync and cloud world backups are both inert until set to `s3` or `b2`
+
+## Required Secrets for state persistence (`BACKUP_PROVIDER=s3`)
+
+Set these as Replit **Secrets** (never commit values) for state to survive a redeploy:
+
+- `BACKUP_PROVIDER=s3`
+- `S3_ENDPOINT` (e.g. `https://s3.filebase.io`)
+- `S3_ACCESS_KEY_ID`
+- `S3_SECRET_ACCESS_KEY`
+- `S3_BUCKET` (must already exist — the provider does not create it)
+
+**A Filebase secret key was pasted directly into a chat session during this work. Treat it as compromised and rotate it in the Filebase dashboard before relying on it in production**, regardless of whether it was also set as a Secret here.

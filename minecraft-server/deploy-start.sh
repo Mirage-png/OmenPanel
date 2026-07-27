@@ -95,6 +95,14 @@ install_if_needed "$BASE_DIR/middleware"
 echo "[3/4] Ensuring architecture-specific lib binaries..."
 "$NODE" "$BASE_DIR/middleware/install-libs.js"
 
+# Must run before mcsm-daemon starts — the daemon loads InstanceConfig once
+# at its own boot and never re-reads it, so a world restored after that point
+# would stay invisible until a second restart. This is what actually survives
+# a "republish": without it, every account, server config, and world is gone
+# the moment the ephemeral filesystem resets (see middleware/state-sync.js).
+echo "[3/4] Restoring panel state from remote storage (if configured)..."
+"$NODE" "$BASE_DIR/middleware/restore-state.js"
+
 echo "[3/4] Starting MCSManager daemon..."
 start_service mcsm-daemon bash -c "cd '$BASE_DIR/mcsmanager/daemon' && exec '$NODE' --max-old-space-size=$DAEMON_HEAP $GC_FLAGS app.js"
 sleep 3
@@ -116,6 +124,26 @@ if [ -z "${OMEN_ADMIN_PASSWORD:-}" ]; then
 fi
 if [ -z "${B2_KEY_ID:-}" ] && [ "${BACKUP_PROVIDER:-}" = "b2" ]; then
   echo "  [WARN] BACKUP_PROVIDER=b2 but B2_KEY_ID is not set — backups will fail."
+fi
+if [ "${BACKUP_PROVIDER:-}" = "s3" ] && { [ -z "${S3_ENDPOINT:-}" ] || [ -z "${S3_ACCESS_KEY_ID:-}" ] || [ -z "${S3_SECRET_ACCESS_KEY:-}" ] || [ -z "${S3_BUCKET:-}" ]; }; then
+  echo "  [WARN] BACKUP_PROVIDER=s3 but S3_ENDPOINT/S3_ACCESS_KEY_ID/S3_SECRET_ACCESS_KEY/S3_BUCKET are incomplete — state will not survive a redeploy."
+fi
+
+# A "republish" on Replit sends SIGTERM to this process before tearing the
+# container down. Without catching it, everything since the last periodic
+# save (up to STATE_SYNC_INTERVAL below) is lost — this is the actual fix for
+# "republishing deletes everything." Runs synchronously so the container
+# isn't reclaimed mid-upload.
+STATE_SYNC_INTERVAL="${STATE_SYNC_INTERVAL_SECONDS:-600}"
+shutdown_save() {
+  echo "[shutdown] Saving panel state before exit..."
+  "$NODE" "$BASE_DIR/middleware/save-state.js"
+  exit 0
+}
+trap shutdown_save SIGTERM SIGINT
+
+if [ "${BACKUP_PROVIDER:-}" = "s3" ] || [ "${BACKUP_PROVIDER:-}" = "b2" ]; then
+  ( while true; do sleep "$STATE_SYNC_INTERVAL"; "$NODE" "$BASE_DIR/middleware/save-state.js"; done ) &
 fi
 
 echo "Deployment started. Monitoring with auto-restart (max 5 restarts/service before backing off)..."

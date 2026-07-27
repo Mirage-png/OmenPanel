@@ -37,6 +37,10 @@ install_if_needed() {
 # Cleanup handler
 cleanup() {
   echo "Shutting down..."
+  if [ "${BACKUP_PROVIDER:-}" = "s3" ] || [ "${BACKUP_PROVIDER:-}" = "b2" ]; then
+    echo "  Saving panel state before exit..."
+    "$NODE" "$BASE_DIR/middleware/save-state.js"
+  fi
   for pidf in "$PID_DIR"/*.pid; do
     [ -f "$pidf" ] && kill "$(cat "$pidf")" 2>/dev/null
   done
@@ -98,6 +102,10 @@ install_if_needed "$BASE_DIR/middleware"
 echo "  Ensuring architecture-specific lib binaries..."
 "$NODE" "$BASE_DIR/middleware/install-libs.js"
 
+# Must run before mcsm-daemon starts — see middleware/state-sync.js.
+echo "  Restoring panel state from remote storage (if configured)..."
+"$NODE" "$BASE_DIR/middleware/restore-state.js"
+
 restart_service mcsm-daemon
 sleep 3
 
@@ -123,6 +131,11 @@ echo "============================================"
 
 MAX_RESTARTS=5
 RESTART_WINDOW=600
+STATE_SYNC_INTERVAL="${STATE_SYNC_INTERVAL_SECONDS:-600}"
+
+if [ "${BACKUP_PROVIDER:-}" = "s3" ] || [ "${BACKUP_PROVIDER:-}" = "b2" ]; then
+  ( while true; do sleep "$STATE_SYNC_INTERVAL"; "$NODE" "$BASE_DIR/middleware/save-state.js"; done ) &
+fi
 
 while true; do
   sleep 10

@@ -8,18 +8,24 @@
  * Configuration is read from the environment so credentials never live in the
  * repository. See middleware/storage/README.md.
  *
- *   BACKUP_PROVIDER       local (default) | b2
+ *   BACKUP_PROVIDER       local (default) | b2 | s3
  *   BACKUP_REMOTE_ROOT    base folder/prefix for backups on the remote
  *   BACKUP_LOCAL_PATH     local: directory to store archives in
  *   B2_KEY_ID             b2: applicationKeyId
  *   B2_APPLICATION_KEY    b2: applicationKey
  *   B2_BUCKET             b2: bucket name
  *   B2_BUCKET_ID          b2: optional, skips a bucket lookup
+ *   S3_ENDPOINT           s3: full endpoint URL, e.g. https://s3.filebase.io
+ *   S3_ACCESS_KEY_ID      s3: access key
+ *   S3_SECRET_ACCESS_KEY  s3: secret key
+ *   S3_BUCKET             s3: bucket name (must already exist)
+ *   S3_REGION             s3: optional, defaults to "auto"
  */
 
 const path = require('path');
 const { LocalProvider } = require('./local');
 const { B2Provider } = require('./b2');
+const { S3Provider } = require('./s3');
 
 /** Key prefix used inside the B2 bucket unless overridden. */
 const DEFAULT_B2_ROOT = 'omenhosting-backups';
@@ -62,6 +68,39 @@ function createProvider(opts) {
     };
   }
 
+  if (kind === 's3') {
+    const endpoint = process.env.S3_ENDPOINT;
+    const accessKeyId = process.env.S3_ACCESS_KEY_ID;
+    const secretAccessKey = process.env.S3_SECRET_ACCESS_KEY;
+    const bucket = process.env.S3_BUCKET;
+
+    const missing = [
+      ['S3_ENDPOINT', endpoint],
+      ['S3_ACCESS_KEY_ID', accessKeyId],
+      ['S3_SECRET_ACCESS_KEY', secretAccessKey],
+      ['S3_BUCKET', bucket]
+    ].filter(([, v]) => !v).map(([k]) => k);
+
+    if (missing.length) {
+      throw new Error(
+        `S3-compatible storage selected but missing: ${missing.join(', ')}. ` +
+        'See middleware/storage/README.md.'
+      );
+    }
+
+    return {
+      kind,
+      provider: new S3Provider({
+        endpoint,
+        accessKeyId,
+        secretAccessKey,
+        bucket,
+        region: process.env.S3_REGION || 'auto',
+        remoteRoot: process.env.BACKUP_REMOTE_ROOT || DEFAULT_B2_ROOT
+      })
+    };
+  }
+
   if (kind === 'local') {
     return {
       kind,
@@ -71,16 +110,16 @@ function createProvider(opts) {
     };
   }
 
-  throw new Error(`Unknown BACKUP_PROVIDER "${kind}" (expected: local, b2)`);
+  throw new Error(`Unknown BACKUP_PROVIDER "${kind}" (expected: local, b2, s3)`);
 }
 
 /**
  * The remote root differs per provider, so the manager asks rather than
- * assuming. B2 keys have no leading slash, so the prefix is applied inside the
- * provider and the manager keeps working in "/uuid/file.zip" terms.
+ * assuming. B2/S3 keys have no leading slash, so the prefix is applied inside
+ * the provider and the manager keeps working in "/uuid/file.zip" terms.
  */
 function getRemoteRoot(kind) {
-  if (kind === 'b2') return '';
+  if (kind === 'b2' || kind === 's3') return '';
   return process.env.BACKUP_REMOTE_ROOT || '';
 }
 

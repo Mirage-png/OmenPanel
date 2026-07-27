@@ -10,13 +10,18 @@ Everything is read from the environment. **No credentials belong in the repo.**
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `BACKUP_PROVIDER` | `local` | `local` or `b2` |
+| `BACKUP_PROVIDER` | `local` | `local`, `b2`, or `s3` |
 | `BACKUP_REMOTE_ROOT` | provider-specific | Base folder/prefix for backups |
 | `BACKUP_LOCAL_PATH` | `omen-data/backups` | `local` only: where archives go |
 | `B2_KEY_ID` | — | Backblaze B2 `applicationKeyId` |
 | `B2_APPLICATION_KEY` | — | Backblaze B2 `applicationKey` |
 | `B2_BUCKET` | — | B2 bucket name |
 | `B2_BUCKET_ID` | — | Optional; skips a bucket lookup |
+| `S3_ENDPOINT` | — | s3: full endpoint URL, e.g. `https://s3.filebase.io` |
+| `S3_ACCESS_KEY_ID` | — | s3: access key |
+| `S3_SECRET_ACCESS_KEY` | — | s3: secret key |
+| `S3_BUCKET` | — | s3: bucket name (must already exist) |
+| `S3_REGION` | `auto` | s3: optional |
 
 Panel settings (`omen-data/settings.json`):
 
@@ -112,7 +117,61 @@ middleware.
 - Deletes remove *every version* of a key, so retention actually reclaims
   storage rather than leaving hidden versions behind.
 
-## Adding another provider (S3, B2, Google Drive…)
+## Provider: `s3` (any S3-compatible service — Filebase, AWS S3, R2, MinIO)
+
+Talks to the S3 REST API directly with hand-rolled SigV4 signing (no AWS SDK
+dependency, same philosophy as the B2 provider). Works against Filebase's
+IPFS-backed S3-compatible storage as well as real S3 and other compatible
+services.
+
+```bash
+export BACKUP_PROVIDER=s3
+export S3_ENDPOINT='https://s3.filebase.io'
+export S3_ACCESS_KEY_ID='…'
+export S3_SECRET_ACCESS_KEY='…'
+export S3_BUCKET='my-bucket'   # must already exist
+# optional
+export S3_REGION='auto'
+export BACKUP_REMOTE_ROOT='omenhosting-backups'
+```
+
+Uploads are single-request PUTs (no multipart), so a single archive is capped
+at 5 GB — S3's own hard limit for a non-multipart PUT. A world approaching
+that size needs the B2 provider instead, which implements the multipart flow.
+
+Some S3-compatible services (Filebase included) reject `UNSIGNED-PAYLOAD` on
+PUT with a bare `AccessDenied`, unlike AWS S3 proper — so uploads are hashed
+in a full streaming pass first, same tradeoff the B2 provider already makes
+for its required SHA-1.
+
+## Whole-panel state persistence (surviving a redeploy)
+
+This backup system answers "how do I get one server's world back after it's
+gone." It does not answer "why is *everything* gone after I republished the
+project" — Replit's filesystem is wiped on every redeploy, taking every
+account, every instance's config, and every world with it.
+
+`middleware/state-sync.js` (plus its two CLI entry points,
+`restore-state.js` and `save-state.js`) is a separate, coarser mechanism for
+that: it snapshots `mcsmanager/web/data`, `mcsmanager/daemon/data/InstanceConfig`,
+and `mcsmanager/daemon/data/InstanceData` as three archives in the same bucket
+configured above (under `STATE_SYNC_ROOT`, default `omen-panel-state`, kept
+separate from per-instance backup paths). It activates automatically whenever
+`BACKUP_PROVIDER` is `s3` or `b2` — no separate credentials needed.
+
+- `restore-state.js` runs once, **before `mcsm-daemon` starts** (wired into
+  `start.sh`/`deploy-start.sh`) — the daemon loads `InstanceConfig` once at
+  its own boot and never re-reads it, so restoring after that point would
+  leave every recovered server invisible until a second restart.
+- `save-state.js` runs on a timer (`STATE_SYNC_INTERVAL_SECONDS`, default
+  600) and once more on `SIGTERM`/`SIGINT` — which is what a Replit
+  "republish" actually sends before tearing the old container down, so the
+  last-second save is what makes redeploying non-destructive.
+
+Both are silent no-ops if `BACKUP_PROVIDER` isn't `s3`/`b2` — a local dev
+setup with no cloud credentials configured behaves exactly as before.
+
+## Adding another provider (Google Drive, …)
 
 The backup logic never names a provider. To add one:
 
