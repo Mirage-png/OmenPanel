@@ -10,7 +10,27 @@ const MIDDLEWARE = { host: '127.0.0.1', port: 29999 };
 // the script is deferred because none of it needs to run before parse.
 const THEME_LINK = `<link rel="stylesheet" href="/api/omen/theme.css">`;
 const INJECT_SCRIPT = THEME_LINK + `<script defer src="/api/omen/inject.js"></script>`;
-const LOADING_PAGE = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta http-equiv="refresh" content="2"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Loading...</title><style>body{background:#0b0e14;color:#2ecc71;font-family:sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;font-size:20px}</style></head><body>Loading panel...</body></html>`;
+
+/**
+ * Shown only when the web panel backend can't be reached (still booting, or
+ * this container is mid-cold-start on an Autoscale deployment). This used to
+ * be a `<meta http-equiv="refresh" content="2">` — a blind full-page reload
+ * every 2 seconds regardless of whether the backend was actually up yet,
+ * which is exactly the kind of thing that produces a visible flash of
+ * whatever half-loaded response comes back on an attempt that happens to hit
+ * a backend that's *just* starting to accept connections. It's replaced with
+ * a background poll against /_omen/ready (this router's own lightweight
+ * check — see below) that only navigates once the backend has actually
+ * confirmed it's accepting connections, instead of reloading on a blind timer.
+ */
+const LOADING_PAGE = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Loading...</title><style>body{background:#0b0e14;color:#2ecc71;font-family:sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;font-size:20px}</style></head><body>Loading panel...<script>
+(function poll() {
+  fetch('/_omen/ready', { cache: 'no-store' })
+    .then(function (r) { return r.json(); })
+    .then(function (data) { if (data && data.ready) location.reload(); else setTimeout(poll, 1000); })
+    .catch(function () { setTimeout(poll, 1000); });
+})();
+</script></body></html>`;
 
 /**
  * Number of proxies the hosting platform puts between the visitor and this
@@ -268,6 +288,32 @@ const server = http.createServer((req, res) => {
   if (parsed.pathname === '/health') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('OK');
+    return;
+  }
+
+  // Polled by LOADING_PAGE's client-side script. Distinct from /health above:
+  // that one is this router's own liveness (always OK, since Cloud Run/Replit
+  // probe it to decide whether to keep the container at all); this one asks
+  // whether the actual web panel backend is accepting connections yet, which
+  // is what the loading page is actually waiting on.
+  if (parsed.pathname === '/_omen/ready') {
+    const probe = http.request({
+      hostname: WEB.host, port: WEB.port, path: '/', method: 'HEAD', timeout: 2000
+    }, (probeRes) => {
+      probeRes.resume();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ready: true }));
+    });
+    probe.on('error', () => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ready: false }));
+    });
+    probe.on('timeout', () => {
+      probe.destroy();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ready: false }));
+    });
+    probe.end();
     return;
   }
 

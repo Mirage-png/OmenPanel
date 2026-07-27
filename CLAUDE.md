@@ -89,6 +89,14 @@ The old code that used to compute this (`scripts/supervisor.sh`) targeted the no
 
 Redundant with OmenHosting's own injected mod browser and confusing as a second entry point — removed outright per explicit request. `removeModManagerCard()` in `inject.js`.
 
+### 13. Loading screen required manually refreshing to recover
+
+**Root cause:** `LOADING_PAGE` (`web/index.js`, shown whenever the router can't reach the web panel backend — most often a cold-starting Autoscale container) used `<meta http-equiv="refresh" content="2">`: a blind full-page reload every 2 seconds regardless of whether the backend was actually ready yet. Every "refresh" was a real navigation with no idea whether it would succeed, which is why it visibly needed several manual reloads before it "just worked" — it was retrying blind, same as a human mashing refresh, just automatically.
+
+**Fix:** replaced the meta-refresh with a small client-side script that polls a new lightweight endpoint, `GET /_omen/ready` (a fast HEAD request from the router straight to the web panel backend, 2s timeout), and only calls `location.reload()` once that actually confirms the backend is accepting connections. Verified live: killed the web panel process, confirmed the loading page renders and `/_omen/ready` correctly reports `false`, then let it come back up and watched the page reload itself to the real login page with no manual interaction.
+
+**Unresolved:** the user separately described a plain "Hi" appearing behind the loading screen. Checked for this specifically — grepped the entire codebase for the literal string, and directly inspected `document.body.innerText` on the live site — found no trace of it anywhere in this stack's own code. It may be something Cloud Run/Replit itself briefly serves during a cold start that this fix's less-aggressive reload behavior will incidentally reduce exposure to, but if it still appears, it needs a screenshot to diagnose further — nothing in this repository renders that text.
+
 ## Boot sequence (deploy-start.sh)
 
 1. Router starts (port 3000 — health check)
