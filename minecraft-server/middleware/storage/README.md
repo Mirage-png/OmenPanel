@@ -164,12 +164,18 @@ separate from per-instance backup paths). It activates automatically whenever
   its own boot and never re-reads it, so restoring after that point would
   leave every recovered server invisible until a second restart.
 - `save-state.js` runs on a timer (`STATE_SYNC_INTERVAL_SECONDS`, default
-  600) and once more on `SIGTERM`/`SIGINT` — which is what a Replit
-  "republish" actually sends before tearing the old container down, so the
-  last-second save is what makes redeploying non-destructive.
+  120) and once more on `SIGTERM`/`SIGINT` — which is what a Replit
+  "republish" actually sends before tearing the old container down. The
+  interval is short specifically because that shutdown save is not fully
+  trustworthy on its own: if the platform's grace period between SIGTERM and
+  a hard kill is shorter than a large `InstanceData` upload takes, the
+  periodic save is what actually has something recent to fall back on.
 
-Both are silent no-ops if `BACKUP_PROVIDER` isn't `s3`/`b2` — a local dev
-setup with no cloud credentials configured behaves exactly as before.
+Neither silently does nothing without a trace: `GET /api/omen/state-sync/status`
+reports whether `BACKUP_PROVIDER` is even set to `s3`/`b2`, and the outcome
+(including the error) of the last save and restore attempt. Check this after
+any redeploy that was supposed to persist data — an empty/misconfigured
+provider produces no error anywhere else visible.
 
 ## Adding another provider (Google Drive, …)
 

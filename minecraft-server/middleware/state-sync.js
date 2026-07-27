@@ -31,6 +31,37 @@ const { createZip, extractZip, DEFAULT_EXCLUDES } = require('./backup/archive');
 const BASE_DIR = path.resolve(__dirname, '..');
 const STATE_SYNC_ROOT = process.env.STATE_SYNC_ROOT || 'omen-panel-state';
 
+/**
+ * A save/restore that silently no-ops (unconfigured) or silently fails
+ * (network error at 3am) is indistinguishable from "working" until someone
+ * loses data on a redeploy and asks why — which is exactly what happened
+ * here: the bucket turned out to be completely empty with no earlier signal
+ * anywhere accessible short of an engineer manually listing it. This file
+ * is the accessible signal — read via GET /api/omen/state-sync/status.
+ */
+const STATUS_FILE = path.join(BASE_DIR, 'omen-data', 'state-sync-status.json');
+
+function writeStatus(patch) {
+  let status = {};
+  try { status = JSON.parse(fs.readFileSync(STATUS_FILE, 'utf8')); } catch { /* first write */ }
+  status = { ...status, ...patch };
+  try {
+    fs.mkdirSync(path.dirname(STATUS_FILE), { recursive: true });
+    fs.writeFileSync(STATUS_FILE, JSON.stringify(status, null, 2));
+  } catch (err) {
+    console.error('[state-sync] Could not write status file:', err.message);
+  }
+  return status;
+}
+
+function getStatus() {
+  const kind = (process.env.BACKUP_PROVIDER || 'local').toLowerCase();
+  const configured = kind === 's3' || kind === 'b2';
+  let persisted = {};
+  try { persisted = JSON.parse(fs.readFileSync(STATUS_FILE, 'utf8')); } catch { /* never run yet */ }
+  return { configured, provider: configured ? kind : null, ...persisted };
+}
+
 const TARGETS = [
   {
     key: 'web-data.zip',
@@ -76,13 +107,20 @@ function resolveProvider() {
 async function restoreState() {
   const provider = resolveProvider();
   if (!provider) {
-    console.log('[state-sync] No S3/B2 provider configured — starting with whatever local data exists.');
+    console.log('[state-sync] No S3/B2 provider configured (BACKUP_PROVIDER is not "s3" or "b2") — starting with whatever local data exists. Check GET /api/omen/state-sync/status.');
     return;
   }
 
-  await provider.init();
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'omen-restore-'));
+  const restored = {};
+  try {
+    await provider.init();
+  } catch (err) {
+    console.error('[state-sync] Provider failed to initialize, cannot restore:', err.message);
+    writeStatus({ lastRestoreAt: Date.now(), lastRestoreError: err.message });
+    return;
+  }
 
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'omen-restore-'));
   try {
     for (const target of TARGETS) {
       const remotePath = '/' + target.key;
@@ -100,7 +138,12 @@ async function restoreState() {
       fs.mkdirSync(target.dir, { recursive: true });
       const { entries } = await extractZip(localZip, target.dir);
       console.log(`[state-sync] Restored ${target.key} → ${path.relative(BASE_DIR, target.dir)} (${entries} entries)`);
+      restored[target.key] = entries;
     }
+    writeStatus({ lastRestoreAt: Date.now(), lastRestoreError: null, restored });
+  } catch (err) {
+    console.error('[state-sync] Restore failed:', err.message);
+    writeStatus({ lastRestoreAt: Date.now(), lastRestoreError: err.message });
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -108,11 +151,24 @@ async function restoreState() {
 
 async function saveState() {
   const provider = resolveProvider();
-  if (!provider) return;   // silently a no-op — this runs unconditionally from a timer/trap
+  if (!provider) {
+    // Runs unconditionally from a timer/shutdown trap regardless of whether
+    // state sync is configured — record *why* nothing happened so that's
+    // visible without cross-referencing deployment logs.
+    writeStatus({ lastSaveAt: Date.now(), lastSaveError: 'BACKUP_PROVIDER is not "s3" or "b2" — state sync is not configured' });
+    return;
+  }
 
-  await provider.init();
+  try {
+    await provider.init();
+  } catch (err) {
+    console.error('[state-sync] Provider failed to initialize, cannot save:', err.message);
+    writeStatus({ lastSaveAt: Date.now(), lastSaveError: err.message });
+    return;
+  }
+
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'omen-save-'));
-
+  const saved = {};
   try {
     for (const target of TARGETS) {
       if (!fs.existsSync(target.dir) || fs.readdirSync(target.dir).length === 0) continue;
@@ -121,11 +177,16 @@ async function saveState() {
       const { size, entries } = await createZip(target.dir, localZip, { excludes: target.excludes });
       await provider.upload(localZip, '/' + target.key);
       console.log(`[state-sync] Saved ${target.key} (${entries} entries, ${(size / 1024 / 1024).toFixed(1)} MB)`);
+      saved[target.key] = { entries, sizeMB: Number((size / 1024 / 1024).toFixed(1)) };
       fs.rmSync(localZip, { force: true });
     }
+    writeStatus({ lastSaveAt: Date.now(), lastSaveError: null, saved });
+  } catch (err) {
+    console.error('[state-sync] Save failed:', err.message);
+    writeStatus({ lastSaveAt: Date.now(), lastSaveError: err.message });
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 }
 
-module.exports = { restoreState, saveState, resolveProvider, TARGETS, STATE_SYNC_ROOT };
+module.exports = { restoreState, saveState, resolveProvider, getStatus, TARGETS, STATE_SYNC_ROOT };

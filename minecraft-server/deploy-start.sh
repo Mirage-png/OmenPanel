@@ -134,7 +134,7 @@ fi
 # save (up to STATE_SYNC_INTERVAL below) is lost — this is the actual fix for
 # "republishing deletes everything." Runs synchronously so the container
 # isn't reclaimed mid-upload.
-STATE_SYNC_INTERVAL="${STATE_SYNC_INTERVAL_SECONDS:-600}"
+STATE_SYNC_INTERVAL="${STATE_SYNC_INTERVAL_SECONDS:-120}"
 shutdown_save() {
   echo "[shutdown] Saving panel state before exit..."
   "$NODE" "$BASE_DIR/middleware/save-state.js"

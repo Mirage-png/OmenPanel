@@ -92,6 +92,7 @@ const { createProvider, getRemoteRoot } = require('./storage');
 const { BackupManager, STATE: BACKUP_STATE } = require('./backup/manager');
 const modrinth = require('./mods/modrinth');
 const { getInstanceStats } = require('./stats');
+const { getStatus: getStateSyncStatus } = require('./state-sync');
 const INSTANCE_DATA_DIR = path.join(BASE_DIR, 'mcsmanager/daemon/data/InstanceData');
 let backupManager = null;
 
@@ -1374,6 +1375,15 @@ const server = http.createServer((req, res) => {
   // ─── Resource usage (CPU / RAM / storage) ───────────────────────
   // Feeds the extra rows added to the panel's "Basic Infomation" card. The
   // daemon only exposes this over a live terminal session, so it is read
+  // Whole-panel state persistence status (see middleware/state-sync.js) —
+  // whether it's configured at all, and when it last actually saved/restored
+  // successfully. Exists because a misconfigured or silently-failing backup
+  // is otherwise indistinguishable from a working one until someone loses
+  // data on a redeploy.
+  if (url.pathname === '/api/omen/state-sync/status' && req.method === 'GET') {
+    return sendJSON(res, 200, getStateSyncStatus());
+  }
+
   // directly from the OS here instead.
   if (url.pathname === '/api/omen/instance-stats' && req.method === 'GET') {
     const uuid = url.searchParams.get('uuid') || '';

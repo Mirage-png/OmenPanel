@@ -131,7 +131,7 @@ echo "============================================"
 
 MAX_RESTARTS=5
 RESTART_WINDOW=600
-STATE_SYNC_INTERVAL="${STATE_SYNC_INTERVAL_SECONDS:-600}"
+STATE_SYNC_INTERVAL="${STATE_SYNC_INTERVAL_SECONDS:-120}"
 
 if [ "${BACKUP_PROVIDER:-}" = "s3" ] || [ "${BACKUP_PROVIDER:-}" = "b2" ]; then
   ( while true; do sleep "$STATE_SYNC_INTERVAL"; "$NODE" "$BASE_DIR/middleware/save-state.js"; done ) &
