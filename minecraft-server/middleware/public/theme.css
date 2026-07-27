@@ -1462,3 +1462,125 @@ body.app-dark-theme .omen-resource-row__sub {
   font-size: 11px;
   font-weight: 500;
 }
+
+/* ============================================================
+   Persistent sidebar (shown whenever an instance is open)
+   ============================================================ */
+
+.omen-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 220px;
+  background: var(--pt-sidebar);
+  border-right: 1px solid var(--pt-border);
+  z-index: 40;
+  padding: 18px 0 14px;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.omen-sidebar__brand {
+  color: var(--pt-text);
+  font-weight: 700;
+  font-size: 15px;
+  padding: 0 20px 18px;
+  letter-spacing: 0.02em;
+}
+
+.omen-sidebar__group {
+  color: var(--pt-faint);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 16px 20px 6px;
+}
+
+.omen-sidebar__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 20px;
+  color: var(--pt-text-2);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.omen-sidebar__item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--pt-text);
+}
+
+.omen-sidebar__item.is-active {
+  background: rgba(var(--pt-accent-rgb), 0.14);
+  color: var(--pt-primary-300);
+  border-left: 2px solid var(--pt-primary-400);
+  padding-left: 18px;
+  box-shadow: var(--pt-glow);
+}
+
+.omen-sidebar__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+/* Shift the panel's own fixed header and content over to make room for the
+   sidebar. Only applied when the sidebar is actually rendered (an instance
+   is open) via the omen-has-sidebar body class, so admin-wide pages like the
+   Instances list, Users, or Daemons keep the panel's normal full-width nav. */
+body.app-light-theme.omen-has-sidebar .app-header-wrapper,
+body.app-dark-theme.omen-has-sidebar .app-header-wrapper {
+  left: 220px;
+  width: calc(100% - 220px);
+}
+
+body.app-light-theme.omen-has-sidebar .global-app-container,
+body.app-dark-theme.omen-has-sidebar .global-app-container {
+  margin-left: 220px;
+}
+
+/* Below the width where MCSManager's own layout already switches to its
+   mobile fab-menu, don't fight that — hide our sidebar and undo the shift. */
+@media (max-width: 900px) {
+  .omen-sidebar { display: none; }
+
+  body.app-light-theme.omen-has-sidebar .app-header-wrapper,
+  body.app-dark-theme.omen-has-sidebar .app-header-wrapper,
+  body.app-light-theme.omen-has-sidebar .global-app-container,
+  body.app-dark-theme.omen-has-sidebar .global-app-container {
+    left: 0;
+    width: 100%;
+    margin-left: 0;
+  }
+}
+
+/* ---------- Limbo countdown banner ---------- */
+body.app-light-theme .omen-limbo-banner,
+body.app-dark-theme .omen-limbo-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 16px;
+  margin-bottom: 14px;
+  background: rgba(234, 179, 8, 0.12);
+  border: 1px solid rgba(234, 179, 8, 0.35);
+  border-left: 3px solid var(--pt-warn);
+  border-radius: var(--pt-radius);
+  color: var(--pt-text);
+  font-size: 13px;
+}
+
+body.app-light-theme .omen-limbo-banner__text b,
+body.app-dark-theme .omen-limbo-banner__text b {
+  color: var(--pt-warn);
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}

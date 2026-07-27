@@ -448,6 +448,333 @@
     };
   }
 
+  // ─── Persistent sidebar ────────────────────────────────────────
+  // Shown whenever an instance is open (Console/Files/Config/etc — anything
+  // with a uuid in the hash). MCSManager's own layout is a top-nav app with
+  // no left rail for a single-server view, so this is a fixed overlay: the
+  // panel's own header and content get shifted right via the
+  // `omen-has-sidebar` body class in theme.css, and this is hidden below the
+  // same breakpoint where MCSManager's own layout already switches to its
+  // mobile fab-menu, so nothing fights that existing responsive behavior.
+
+  var SIDEBAR_ICONS = {
+    console: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>',
+    files: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>',
+    plugins: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/><circle cx="12" cy="12" r="4"/></svg>',
+    backups: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25"/><polyline points="12 12 12 21"/><polyline points="9 18 12 21 15 18"/></svg>',
+    network: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
+    settings: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>'
+  };
+
+  var SIDEBAR_ITEMS = [
+    {
+      group: 'YOUR SERVER', key: 'console', label: 'Console',
+      match: /^#\/instances\/terminal(\?|$)/,
+      go: function (q) { window.location.hash = '/instances/terminal' + q; }
+    },
+    {
+      group: 'YOUR SERVER', key: 'files', label: 'Files',
+      match: /^#\/instances\/terminal\/files/,
+      go: function (q) { window.location.hash = '/instances/terminal/files' + q; }
+    },
+    {
+      group: 'YOUR SERVER', key: 'plugins', label: 'Plugins',
+      match: null,
+      go: function () { openModBrowser('plugin'); }
+    },
+    {
+      group: 'YOUR SERVER', key: 'backups', label: 'Backups',
+      match: null,
+      go: function () { showBackupModal(); }
+    },
+    {
+      group: 'CONFIG', key: 'network', label: 'Network',
+      match: null,
+      go: function () { showNetworkModal(); }
+    },
+    {
+      group: 'CONFIG', key: 'settings', label: 'Settings',
+      match: /^#\/instances\/terminal\/serverConfig/,
+      go: function (q) { window.location.hash = '/instances/terminal/serverConfig' + q; }
+    }
+  ];
+
+  function currentHashQuery() {
+    var hash = window.location.hash || '';
+    var i = hash.indexOf('?');
+    return i === -1 ? '' : hash.slice(i);
+  }
+
+  function renderSidebar() {
+    var uuid = getInstanceUuid();
+    var existing = document.querySelector('.omen-sidebar');
+
+    if (!uuid) {
+      if (existing) existing.remove();
+      document.body.classList.remove('omen-has-sidebar');
+      return;
+    }
+    document.body.classList.add('omen-has-sidebar');
+
+    var hash = window.location.hash || '';
+    var q = currentHashQuery();
+
+    if (!existing) {
+      existing = el('div', 'omen-sidebar');
+      document.body.appendChild(existing);
+      existing.addEventListener('click', function (e) {
+        var itemEl = e.target.closest('[data-sidebar-key]');
+        if (!itemEl) return;
+        var key = itemEl.getAttribute('data-sidebar-key');
+        for (var i = 0; i < SIDEBAR_ITEMS.length; i++) {
+          if (SIDEBAR_ITEMS[i].key === key) { SIDEBAR_ITEMS[i].go(currentHashQuery()); break; }
+        }
+      });
+    }
+
+    var groups = [];
+    var byGroup = {};
+    for (var g = 0; g < SIDEBAR_ITEMS.length; g++) {
+      var item = SIDEBAR_ITEMS[g];
+      if (!byGroup[item.group]) { byGroup[item.group] = []; groups.push(item.group); }
+      byGroup[item.group].push(item);
+    }
+
+    var html = '<div class="omen-sidebar__brand">OmenHosting</div>';
+    for (var gi = 0; gi < groups.length; gi++) {
+      var groupName = groups[gi];
+      html += '<div class="omen-sidebar__group">' + groupName + '</div>';
+      byGroup[groupName].forEach(function (it) {
+        var active = it.match && it.match.test(hash);
+        html += '<div class="omen-sidebar__item' + (active ? ' is-active' : '') + '" data-sidebar-key="' + it.key + '">' +
+          '<span class="omen-sidebar__icon">' + SIDEBAR_ICONS[it.key] + '</span>' +
+          '<span>' + it.label + '</span>' +
+        '</div>';
+      });
+    }
+
+    if (existing.dataset.q !== q + hash.split('?')[0]) {
+      existing.dataset.q = q + hash.split('?')[0];
+      existing.innerHTML = html;
+    }
+  }
+
+  // ─── Network settings modal (Minekube subdomain) ──────────────
+  function showNetworkModal() {
+    if (document.querySelector('.omen-network-modal')) return;
+    var uuid = getInstanceUuid();
+    if (!uuid) return;
+
+    var modal = buildModal('omen-network-modal',
+      '<h2 class="omen-modal__title">Network</h2>' +
+      '<p class="omen-modal__sub">Choose the subdomain players use to connect.</p>' +
+      '<div class="omen-field"><label>Subdomain</label>' +
+        '<input id="omen-network-name" type="text" maxlength="16" placeholder="my-server" autocomplete="off"></div>' +
+      '<p class="omen-modal__sub" id="omen-network-preview" style="margin-top:-10px;text-align:left"></p>' +
+      '<div class="omen-msg omen-msg--err" id="omen-network-error" style="display:none"></div>' +
+      '<div class="omen-msg omen-msg--ok" id="omen-network-success" style="display:none"></div>' +
+      '<div class="omen-modal__actions">' +
+        '<button class="omen-btn omen-btn--ghost" id="omen-network-cancel" type="button">Cancel</button>' +
+        '<button class="omen-btn" id="omen-network-save" type="button">Save</button>' +
+      '</div>');
+
+    var input = modal.querySelector('#omen-network-name');
+    var preview = modal.querySelector('#omen-network-preview');
+    var errEl = modal.querySelector('#omen-network-error');
+    var okEl = modal.querySelector('#omen-network-success');
+    var save = modal.querySelector('#omen-network-save');
+
+    function updatePreview() {
+      var v = input.value.trim();
+      preview.textContent = v ? v + '.play.minekube.net' : '';
+    }
+    input.addEventListener('input', updatePreview);
+
+    modal.querySelector('#omen-network-cancel').onclick = function () { modal.remove(); };
+
+    getJSON('/api/omen/network/endpoint?uuid=' + encodeURIComponent(uuid)).then(function (data) {
+      if (data && data.endpoint) { input.value = data.endpoint; updatePreview(); }
+      input.focus();
+    });
+
+    save.onclick = function () {
+      var name = input.value.trim();
+      errEl.style.display = 'none';
+      okEl.style.display = 'none';
+      save.disabled = true;
+      save.textContent = 'Saving…';
+
+      fetch('/api/omen/network/endpoint', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uuid: uuid, name: name })
+      })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+        .then(function (res) {
+          save.disabled = false;
+          save.textContent = 'Save';
+          if (res.ok) {
+            okEl.textContent = 'Saved — takes effect the next time the server restarts.';
+            okEl.style.display = 'block';
+          } else {
+            errEl.textContent = (res.data && res.data.error) || 'Failed to save';
+            errEl.style.display = 'block';
+          }
+        })
+        .catch(function () {
+          save.disabled = false;
+          save.textContent = 'Save';
+          errEl.textContent = 'Connection error';
+          errEl.style.display = 'block';
+        });
+    };
+  }
+
+  // ─── Backups modal ─────────────────────────────────────────────
+  function showBackupModal() {
+    if (document.querySelector('.omen-backups-modal')) return;
+    var uuid = getInstanceUuid();
+    if (!uuid) return;
+
+    var modal = buildModal('omen-backups-modal',
+      '<h2 class="omen-modal__title">Backups</h2>' +
+      '<p class="omen-modal__sub">Cloud backups of this server\'s world and configs.</p>' +
+      '<div id="omen-backups-status" style="margin-bottom:14px"></div>' +
+      '<button class="omen-btn" id="omen-backups-run" type="button" style="width:100%;margin-bottom:16px">Backup Now</button>' +
+      '<div class="omen-mod-heading">History</div>' +
+      '<div class="omen-mod-results" id="omen-backups-history"><div class="omen-mod-empty">Loading…</div></div>' +
+      '<div class="omen-modal__actions">' +
+        '<button class="omen-btn omen-btn--ghost" id="omen-backups-close" type="button">Close</button>' +
+      '</div>');
+
+    modal.querySelector('.omen-modal__card').classList.add('omen-modal__card--wide');
+    modal.querySelector('#omen-backups-close').onclick = function () { modal.remove(); };
+
+    modal.querySelector('#omen-backups-run').onclick = function () {
+      var btn = this;
+      btn.disabled = true;
+      btn.textContent = 'Starting…';
+      fetch('/api/omen/backup/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uuid: uuid })
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data && data.error) { btn.disabled = false; btn.textContent = 'Backup Now'; return; }
+          setTimeout(function () {
+            if (!btn.isConnected) return;
+            btn.disabled = false;
+            btn.textContent = 'Backup Now';
+            loadBackupStatus(uuid);
+            loadBackupHistory(uuid);
+          }, 1500);
+        })
+        .catch(function () { btn.disabled = false; btn.textContent = 'Backup Now'; });
+    };
+
+    loadBackupStatus(uuid);
+    loadBackupHistory(uuid);
+  }
+
+  function loadBackupStatus(uuid) {
+    var box = document.getElementById('omen-backups-status');
+    if (!box) return;
+    getJSON('/api/omen/backup/status').then(function (data) {
+      if (!box.isConnected) return;
+      if (!data || !data.enabled) {
+        box.innerHTML = '<div class="omen-msg omen-msg--err" style="margin:0">Cloud backups are not configured for this server.</div>';
+        return;
+      }
+      var st = (data.states && data.states[uuid]) || { state: 'idle' };
+      box.innerHTML = '<div class="omen-mod-sub">Status: ' + escapeHtml(st.state || 'idle') + '</div>';
+    });
+  }
+
+  function loadBackupHistory(uuid) {
+    var box = document.getElementById('omen-backups-history');
+    if (!box) return;
+    getJSON('/api/omen/backup/history?uuid=' + encodeURIComponent(uuid) + '&limit=10').then(function (data) {
+      if (!box.isConnected) return;
+      if (!data || !data.enabled) {
+        box.innerHTML = '<div class="omen-mod-empty">Cloud backups are not configured.</div>';
+        return;
+      }
+      var records = data.records || [];
+      if (!records.length) {
+        box.innerHTML = '<div class="omen-mod-empty">No backups yet.</div>';
+        return;
+      }
+      box.innerHTML = records.map(function (r) {
+        var when = new Date(r.ts).toLocaleString();
+        var kind = r.type === 'restore' ? 'Restore' : 'Backup';
+        var ok = r.success !== false;
+        return '<div class="omen-mod-row">' +
+          '<div class="omen-mod-meta">' +
+            '<div class="omen-mod-name">' + kind + (ok ? '' : ' — failed') + '</div>' +
+            '<div class="omen-mod-sub">' + escapeHtml(when) + (r.sizeBytes ? ' · ' + formatBytes(r.sizeBytes) : '') + '</div>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+    });
+  }
+
+  // ─── Limbo countdown banner ────────────────────────────────────
+  // Shown above the console when the running server is empty and counting
+  // down toward auto-sleep, mirroring the reference product's "about to
+  // enter limbo" warning with a live countdown and a way to postpone it.
+  function formatCountdown(sec) {
+    var m = Math.floor(sec / 60);
+    var s = sec % 60;
+    return m > 0 ? (m + 'm ' + s + 's') : (s + 's');
+  }
+
+  function renderLimboBanner() {
+    var uuid = getInstanceUuid();
+    var consoleArea = document.querySelector('.terminal-wrapper, .console-wrapper, [class*="terminal"]');
+    var existing = document.querySelector('.omen-limbo-banner');
+
+    if (!uuid || !consoleArea) {
+      if (existing) existing.remove();
+      return;
+    }
+
+    getJSON('/api/omen/autosleep/' + uuid).then(function (data) {
+      var banner = document.querySelector('.omen-limbo-banner');
+      if (!data || data.secondsUntilSleep === null || data.secondsUntilSleep === undefined) {
+        if (banner) banner.remove();
+        return;
+      }
+
+      var area = document.querySelector('.terminal-wrapper, .console-wrapper, [class*="terminal"]');
+      if (!area) { if (banner) banner.remove(); return; }
+
+      if (!banner) {
+        banner = el('div', 'omen-limbo-banner',
+          '<span class="omen-limbo-banner__text">Your server is about to enter limbo in ' +
+            '<b id="omen-limbo-countdown">--</b></span>' +
+          '<button class="omen-btn omen-btn--ghost" id="omen-limbo-pause" type="button">Pause now</button>');
+        area.parentNode.insertBefore(banner, area);
+        banner.querySelector('#omen-limbo-pause').addEventListener('click', function () {
+          var btn = this;
+          btn.disabled = true;
+          btn.textContent = 'Pausing…';
+          fetch('/api/omen/autosleep/pause', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ uuid: getInstanceUuid() })
+          }).then(function () { banner.remove(); })
+            .catch(function () { btn.disabled = false; btn.textContent = 'Pause now'; });
+        });
+      }
+
+      var cd = document.getElementById('omen-limbo-countdown');
+      if (cd) cd.textContent = formatCountdown(data.secondsUntilSleep);
+    });
+  }
+
+  var limboBannerTimer = null;
+
   // ─── Queue ────────────────────────────────────────────────────
   var queueUserUuid = '';
   var queuePollTimer = null;
@@ -455,6 +782,14 @@
 
   function stopQueuePoll() {
     if (queuePollTimer) { clearInterval(queuePollTimer); queuePollTimer = null; }
+  }
+
+  function formatWait(minutes) {
+    if (!minutes) return 'a few minutes';
+    if (minutes < 60) return '~' + minutes + ' min';
+    var h = Math.floor(minutes / 60);
+    var m = minutes % 60;
+    return '~' + h + 'h' + (m ? ' ' + m + 'm' : '');
   }
 
   function startQueuePoll() {
@@ -465,8 +800,10 @@
         if (!data) return;
         var posEl = document.getElementById('omen-queue-position');
         var runEl = document.getElementById('omen-queue-running');
+        var waitEl = document.getElementById('omen-queue-wait');
         if (posEl) posEl.textContent = data.position || '-';
         if (runEl) runEl.textContent = data.running + ' / ' + data.max + ' running';
+        if (waitEl) waitEl.textContent = 'Estimated wait: ' + formatWait(data.estimatedWaitMinutes);
         if (data.position === 0 || data.position === null) {
           var m = document.querySelector('.omen-queue-modal');
           if (m) m.remove();
@@ -485,21 +822,23 @@
         '<rect x="3" y="4" width="18" height="16" rx="2"/><line x1="8" y1="2" x2="8" y2="6"/>' +
         '<line x1="16" y1="2" x2="16" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>' +
       '</div>' +
-      '<h2 class="omen-modal__title">Server Queue</h2>' +
-      '<p class="omen-modal__sub">Your server starts automatically when a slot opens up.</p>' +
+      '<h2 class="omen-modal__title">Server in Limbo</h2>' +
+      '<p class="omen-modal__sub">Only one server can run at a time — wake yours and it starts as soon as a slot is free.</p>' +
       '<div id="omen-queue-position-box" style="display:none;text-align:center">' +
+        '<p class="omen-modal__sub" style="margin:0 0 2px;font-weight:600;color:var(--pt-muted)">IN THE LIMBO QUEUE</p>' +
         '<div class="omen-queue__position">#<span id="omen-queue-position">-</span></div>' +
         '<p class="omen-modal__sub" style="margin:0 0 4px">Your position in queue</p>' +
         '<p class="omen-queue__meta" id="omen-queue-running">0 / 0 running</p>' +
+        '<p class="omen-queue__meta" id="omen-queue-wait">Estimated wait: —</p>' +
       '</div>' +
-      '<button class="omen-btn" id="omen-queue-join-btn" type="button" style="width:100%">Join Queue</button>' +
+      '<button class="omen-btn" id="omen-queue-join-btn" type="button" style="width:100%">Wake Server</button>' +
       '<p class="omen-queue__leave" id="omen-queue-leave" style="display:none;text-align:center">Leave queue</p>');
 
     var joinBtn = modal.querySelector('#omen-queue-join-btn');
 
     joinBtn.addEventListener('click', function () {
       joinBtn.disabled = true;
-      joinBtn.textContent = 'Joining…';
+      joinBtn.textContent = 'Waking…';
       fetch('/api/omen/queue/join', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -516,12 +855,14 @@
             modal.querySelector('#omen-queue-position').textContent = data.position;
             modal.querySelector('#omen-queue-running').textContent =
               data.running + ' / ' + data.max + ' running';
+            modal.querySelector('#omen-queue-wait').textContent =
+              'Estimated wait: ' + formatWait(data.estimatedWaitMinutes);
             joinBtn.style.display = 'none';
             modal.querySelector('#omen-queue-leave').style.display = 'block';
             startQueuePoll();
           }
         })
-        .catch(function () { joinBtn.disabled = false; joinBtn.textContent = 'Join Queue'; });
+        .catch(function () { joinBtn.disabled = false; joinBtn.textContent = 'Wake Server'; });
     });
 
     modal.querySelector('#omen-queue-leave').addEventListener('click', function () {
@@ -973,6 +1314,8 @@
     addManageInstanceCards();
     removeModManagerCard();
     renderResourceUsage();
+    renderSidebar();
+    renderLimboBanner();
   }
 
   function schedulePass() {
@@ -1007,6 +1350,7 @@
 
     setBackupPoll(15000);
     setResourcePoll();
+    if (!limboBannerTimer) limboBannerTimer = setInterval(renderLimboBanner, 5000);
 
     // Catch up immediately when the tab comes back into view.
     document.addEventListener('visibilitychange', function () {

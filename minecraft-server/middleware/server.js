@@ -83,6 +83,25 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 // ═══ State ═══
 const serverStates = {};  // uuid -> { lastPlayerCount, lastActivity, emptySince, minekubeAddress, sleeping }
 const settingsDB = path.join(DATA_DIR, 'settings.json');
+const customEndpointsDB = path.join(DATA_DIR, 'custom-endpoints.json');
+
+function loadCustomEndpoints() {
+  try { return JSON.parse(fs.readFileSync(customEndpointsDB, 'utf8')); } catch { return {}; }
+}
+function saveCustomEndpoints(map) {
+  fs.writeFileSync(customEndpointsDB, JSON.stringify(map, null, 2));
+}
+
+// Same length constraint as minekubeEndpointName below: measured live against
+// Minekube's WatchService, 16 chars is the largest confirmed-working length.
+const ENDPOINT_NAME_RE = /^[a-z0-9]([a-z0-9-]{0,14}[a-z0-9])?$/i;
+function validateEndpointName(name) {
+  if (typeof name !== 'string' || !name.trim()) return 'A subdomain is required';
+  const trimmed = name.trim();
+  if (trimmed.length > 16) return 'Must be 16 characters or fewer';
+  if (!ENDPOINT_NAME_RE.test(trimmed)) return 'Letters, numbers, and hyphens only (not at the start or end)';
+  return null;
+}
 
 // ═══ Cloud Backup ═══
 // Populated by initBackupSystem() at startup. Stays null when the storage
@@ -153,6 +172,19 @@ function queueStartNext() {
         queueStartNext();
       });
   }
+}
+
+/**
+ * Rough wait estimate for the Limbo queue UI. There's no tracked history of
+ * how long a typical session runs before its slot frees up, so this uses the
+ * configured auto-sleep timeout as a stand-in for "typical time before a slot
+ * turns over" — an honest, clearly-labeled estimate rather than invented
+ * precision, and grounded in a real configured value rather than a guess.
+ */
+function estimateWaitMinutes(position) {
+  if (!position) return 0;
+  const settings = loadSettings();
+  return position * (settings.autoSleepMinutes || 3);
 }
 
 function removeFromQueue(uuid) {
@@ -892,8 +924,13 @@ async function installMinekubePlugin(instanceUuid) {
  * instance uuid fails, 16 hex chars succeeds. Truncating still leaves 64
  * bits of uniqueness, effectively collision-free for any realistic instance
  * count, while comfortably clearing whatever the real limit is.
+ *
+ * A user-chosen subdomain (Network settings, see /api/omen/network/endpoint)
+ * takes priority over the uuid-derived default when one has been saved.
  */
 function minekubeEndpointName(instanceUuid) {
+  const custom = loadCustomEndpoints()[instanceUuid];
+  if (custom) return custom;
   return instanceUuid.slice(0, 16);
 }
 
@@ -922,16 +959,20 @@ endpoint: ${endpointName}
 
     // Instances installed before this fix have a config with no `endpoint:`
     // line at all, so the plugin still falls back to its own random default.
+    // Otherwise re-sync whenever the file's value differs from what's
+    // currently desired — covers both a legacy full-uuid value (which
+    // Minekube rejects outright) and a subdomain changed via Network
+    // settings. This function is the only writer of this line, so there's
+    // no manual customization path to worry about clobbering.
     if (!/^endpoint:/m.test(cfg)) {
       cfg += `\nendpoint: ${endpointName}\n`;
       changed = true;
-    } else if (new RegExp(`^endpoint:\\s*${instanceUuid}\\s*$`, 'm').test(cfg)) {
-      // Written by an earlier version of this fix using the full uuid, which
-      // Minekube rejects outright — replace it with the shortened form. Only
-      // matches the exact full uuid, so a manually customized endpoint name
-      // is never touched.
-      cfg = cfg.replace(new RegExp(`^endpoint:\\s*${instanceUuid}\\s*$`, 'm'), `endpoint: ${endpointName}`);
-      changed = true;
+    } else {
+      const match = cfg.match(/^endpoint:\s*(\S*)\s*$/m);
+      if (match && match[1] !== endpointName) {
+        cfg = cfg.replace(/^endpoint:\s*\S*\s*$/m, `endpoint: ${endpointName}`);
+        changed = true;
+      }
     }
 
     if (changed) {
@@ -1391,7 +1432,60 @@ const server = http.createServer((req, res) => {
     return sendJSON(res, 200, { address: address || null });
   }
 
-  // Check auto-sleep status
+  // Network settings: read the subdomain currently in effect for an instance
+  // (custom, if one was saved, otherwise the uuid-derived default).
+  if (url.pathname === '/api/omen/network/endpoint' && req.method === 'GET') {
+    const uuid = url.searchParams.get('uuid') || '';
+    if (!uuid) return sendJSON(res, 400, { error: 'uuid required' });
+    const custom = loadCustomEndpoints()[uuid];
+    return sendJSON(res, 200, {
+      endpoint: custom || minekubeEndpointName(uuid),
+      isCustom: !!custom,
+      maxLength: 16
+    });
+  }
+
+  // Network settings: save a custom subdomain. Only updates the plugin config
+  // file on disk the next time this instance starts (ensureMinekubeConfig
+  // re-syncs the endpoint line on every start), same "takes effect on next
+  // restart" constraint as everything else that touches instance config here.
+  if (url.pathname === '/api/omen/network/endpoint' && req.method === 'POST') {
+    let body = '';
+    req.on('data', (c) => body += c);
+    req.on('end', () => {
+      try {
+        const { uuid, name } = JSON.parse(body);
+        if (!uuid) return sendJSON(res, 400, { error: 'uuid required' });
+        const trimmed = (name || '').trim();
+        const err = validateEndpointName(trimmed);
+        if (err) return sendJSON(res, 400, { error: err });
+        const map = loadCustomEndpoints();
+        map[uuid] = trimmed;
+        saveCustomEndpoints(map);
+        sendJSON(res, 200, { endpoint: trimmed });
+      } catch { sendJSON(res, 400, { error: 'Invalid request' }); }
+    });
+    return;
+  }
+
+  // Auto-sleep: let the owner reset the empty-server timer from the Limbo
+  // countdown banner instead of waiting it out or having to log back in.
+  if (url.pathname === '/api/omen/autosleep/pause' && req.method === 'POST') {
+    let body = '';
+    req.on('data', (c) => body += c);
+    req.on('end', () => {
+      try {
+        const { uuid } = JSON.parse(body);
+        if (!uuid) return sendJSON(res, 400, { error: 'uuid required' });
+        if (serverStates[uuid]) serverStates[uuid].emptySince = null;
+        sendJSON(res, 200, { success: true });
+      } catch { sendJSON(res, 400, { error: 'Invalid request' }); }
+    });
+    return;
+  }
+
+  // Check auto-sleep status, plus (when the server is currently empty and
+  // counting down) how long until it enters Limbo, for the countdown banner.
   if (url.pathname.startsWith('/api/omen/autosleep/')) {
     const uuid = url.pathname.split('/').pop();
     const markerFile = path.join(DATA_DIR, `autosleep-${uuid}.json`);
@@ -1402,7 +1496,14 @@ const server = http.createServer((req, res) => {
         sleeping = true;
       } catch {}
     }
-    return sendJSON(res, 200, { sleeping });
+    const settings = loadSettings();
+    const state = serverStates[uuid];
+    let secondsUntilSleep = null;
+    if (state && state.emptySince && settings.autoSleepEnabled) {
+      const thresholdMs = (settings.autoSleepMinutes || 3) * 60000;
+      secondsUntilSleep = Math.max(0, Math.round((thresholdMs - (Date.now() - state.emptySince)) / 1000));
+    }
+    return sendJSON(res, 200, { sleeping, secondsUntilSleep });
   }
 
   // Get settings
@@ -1817,7 +1918,11 @@ const server = http.createServer((req, res) => {
     // `.query` of url.parse(). Reading `.query` made this always return null.
     const uuid = url.searchParams.get('uuid') || '';
     const idx = queue.findIndex(e => e.uuid === uuid);
-    return sendJSON(res, 200, { position: idx === -1 ? null : idx + 1, running: runningCount, max: MAX_RUNNING });
+    const position = idx === -1 ? null : idx + 1;
+    return sendJSON(res, 200, {
+      position, running: runningCount, max: MAX_RUNNING,
+      estimatedWaitMinutes: estimateWaitMinutes(position)
+    });
   }
 
   // Queue: join
@@ -1836,7 +1941,10 @@ const server = http.createServer((req, res) => {
         // Check if already in queue
         if (queue.find(e => e.uuid === uuid)) {
           const idx = queue.findIndex(e => e.uuid === uuid);
-          return sendJSON(res, 200, { position: idx + 1, running: runningCount, max: MAX_RUNNING });
+          return sendJSON(res, 200, {
+            position: idx + 1, running: runningCount, max: MAX_RUNNING,
+            estimatedWaitMinutes: estimateWaitMinutes(idx + 1)
+          });
         }
         // Check if slot available. The slot is reserved up front so two
         // simultaneous joins can't both claim it, then released if the start
@@ -1860,7 +1968,10 @@ const server = http.createServer((req, res) => {
         queue.push({ uuid, name: name || uuid, joinedAt: Date.now() });
         const pos = queue.length;
         console.log(`[queue] ${name || uuid} joined queue at #${pos} (${runningCount}/${MAX_RUNNING})`);
-        sendJSON(res, 200, { position: pos, running: runningCount, max: MAX_RUNNING });
+        sendJSON(res, 200, {
+          position: pos, running: runningCount, max: MAX_RUNNING,
+          estimatedWaitMinutes: estimateWaitMinutes(pos)
+        });
       } catch { sendJSON(res, 400, { error: 'Invalid request' }); }
     });
     return;
