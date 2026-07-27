@@ -79,10 +79,10 @@ start_service() {
 restart_service() {
   local name="$1"
   case "$name" in
-    router) start_service router "$NODE" --max-old-space-size="$ROUTER_HEAP" "$BASE_DIR/web/index.js" ;;
+    router) start_service router "$NODE" --max-old-space-size="$ROUTER_HEAP" $GC_FLAGS "$BASE_DIR/web/index.js" ;;
     mcsm-daemon) start_service mcsm-daemon bash -c "cd '$BASE_DIR/mcsmanager/daemon' && exec '$NODE' --max-old-space-size=$DAEMON_HEAP $GC_FLAGS app.js" ;;
     mcsm-web) start_service mcsm-web bash -c "cd '$BASE_DIR/mcsmanager/web' && exec '$NODE' --max-old-space-size=$WEB_HEAP $GC_FLAGS app.js" ;;
-    middleware) start_service middleware "$NODE" --max-old-space-size="$MIDDLEWARE_HEAP" "$BASE_DIR/middleware/server.js" ;;
+    middleware) start_service middleware "$NODE" --max-old-space-size="$MIDDLEWARE_HEAP" $GC_FLAGS "$BASE_DIR/middleware/server.js" ;;
   esac
 }
 

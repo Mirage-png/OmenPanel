@@ -97,6 +97,16 @@ Redundant with OmenHosting's own injected mod browser and confusing as a second 
 
 **Unresolved:** the user separately described a plain "Hi" appearing behind the loading screen. Checked for this specifically — grepped the entire codebase for the literal string, and directly inspected `document.body.innerText` on the live site — found no trace of it anywhere in this stack's own code. It may be something Cloud Run/Replit itself briefly serves during a cold start that this fix's less-aggressive reload behavior will incidentally reduce exposure to, but if it still appears, it needs a screenshot to diagnose further — nothing in this repository renders that text.
 
+### 14. Resource/memory optimization pass
+
+Three things found and fixed in the same pass:
+
+- **Router and middleware were missing the GC tuning flags** (`--optimize-for-size --gc-interval=100 --max-semi-space-size=32`) that the daemon and web panel already had — they only got `--max-old-space-size`. Applied consistently across all four processes in both `start.sh` and `deploy-start.sh`.
+- **`checkAutoSleep()` checked every instance's port sequentially**, each `await`ed one at a time, so N stopped instances serialized their checks on every 30s cycle. Worse: one malformed/corrupt `InstanceConfig` file threw out of the shared `try/catch` and silently skipped every instance queued behind it in the loop for that whole cycle. Fixed by processing instances concurrently via `Promise.all`, each with its own error boundary — measured the actual port-check timing difference directly (small locally, since a closed loopback port refuses near-instantly either way) but the per-instance error isolation is a real correctness fix regardless.
+- **`serverStates`, `logPlayerActivity`, and `installedPlugins` never got cleaned up** when an instance was deleted — deletion goes straight through to the web panel/daemon and never touches this middleware, so nothing ever noticed. These now get pruned against the live `InstanceConfig` file list on every auto-sleep cycle (which already reads that list regardless), independent of whether auto-sleep itself is enabled.
+
+**Also reiterating, since it bears directly on "the loading screen still shows up":** none of this changes the underlying Autoscale multi-instance issue from §6. If requests keep landing on different container instances that don't share memory, some of them will always be cold. Reserved VM (a single persistent machine) is still the only fix for that specific symptom — these optimizations reduce this app's own footprint and waste, they don't change how many separate instances Cloud Run decides to run.
+
 ## Boot sequence (deploy-start.sh)
 
 1. Router starts (port 3000 — health check)

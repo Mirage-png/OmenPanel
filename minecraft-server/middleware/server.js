@@ -342,86 +342,115 @@ function detectPlayerActivity(text, instanceUuid) {
   }
 }
 
+/**
+ * Checked one instance at a time with an `await` per port-check (up to a 2s
+ * timeout each — see checkPort) inside a plain for-loop, so N stopped
+ * instances added up to N*2s of pure wall-clock waiting every single 30s
+ * poll, entirely serialized for no reason (each instance's state is
+ * independent). Also, a single malformed/corrupt config.json used to throw
+ * out of the shared try/catch and silently skip every instance queued behind
+ * it in the loop for that whole cycle. Both fixed by processing instances
+ * concurrently, each with its own error boundary.
+ */
 async function checkAutoSleep() {
+  const instanceDir = path.join(BASE_DIR, 'mcsmanager/daemon/data/InstanceConfig');
+  if (!fs.existsSync(instanceDir)) return;
+
+  let files;
+  try {
+    files = fs.readdirSync(instanceDir).filter(f => f.endsWith('.json') && f !== 'global0001.json');
+  } catch (err) {
+    console.error('[auto-sleep] Error listing instances:', err.message);
+    return;
+  }
+
+  // serverStates/logPlayerActivity/installedPlugins are only ever added to,
+  // never removed — deleting a server through the panel never goes through
+  // this middleware, so nothing else notices and these grow forever. This
+  // already reads the current instance list every cycle regardless, so
+  // pruning anything not in it is nearly free. Runs even when auto-sleep
+  // itself is off below, since the leak isn't specific to that feature.
+  const liveUuids = new Set(files.map((f) => f.replace('.json', '')));
+  for (const uuid of Object.keys(serverStates)) if (!liveUuids.has(uuid)) delete serverStates[uuid];
+  for (const uuid of Object.keys(logPlayerActivity)) if (!liveUuids.has(uuid)) delete logPlayerActivity[uuid];
+  for (const uuid of Object.keys(installedPlugins)) if (!liveUuids.has(uuid)) delete installedPlugins[uuid];
+
   const settings = loadSettings();
   if (!settings.autoSleepEnabled) return;
 
+  await Promise.all(files.map((file) => checkInstanceAutoSleep(file, instanceDir, settings)));
+}
+
+async function checkInstanceAutoSleep(file, instanceDir, settings) {
   try {
-    const instanceDir = path.join(BASE_DIR, 'mcsmanager/daemon/data/InstanceConfig');
-    if (!fs.existsSync(instanceDir)) return;
+    const uuid = file.replace('.json', '');
+    const config = JSON.parse(fs.readFileSync(path.join(instanceDir, file), 'utf8'));
 
-    const files = fs.readdirSync(instanceDir).filter(f => f.endsWith('.json') && f !== 'global0001.json');
+    if (!config.type || (!config.type.includes('minecraft') && config.type !== 'universal')) return;
+    if (!config.startCommand || config.startCommand.trim() === '') return;
 
-    for (const file of files) {
-      const uuid = file.replace('.json', '');
-      const config = JSON.parse(fs.readFileSync(path.join(instanceDir, file), 'utf8'));
+    if (!serverStates[uuid]) {
+      serverStates[uuid] = { lastPlayerCount: -1, lastActivity: Date.now(), emptySince: null, minekubeAddress: null, sleeping: false };
+    }
 
-      if (!config.type || (!config.type.includes('minecraft') && config.type !== 'universal')) continue;
-      if (!config.startCommand || config.startCommand.trim() === '') continue;
+    const state = serverStates[uuid];
 
-      if (!serverStates[uuid]) {
-        serverStates[uuid] = { lastPlayerCount: -1, lastActivity: Date.now(), emptySince: null, minekubeAddress: null, sleeping: false };
+    // Check if server port is open
+    const running = await isInstanceRunning(uuid);
+    if (!running) {
+      if (state.emptySince !== null) {
+        console.log(`[auto-sleep] Server ${config.nickname} is no longer running, resetting timer`);
       }
+      state.sleeping = false;
+      state.emptySince = null;
+      return;
+    }
 
-      const state = serverStates[uuid];
+    // Get port from config
+    const port = config.basePort || config.pingConfig?.port || 25565;
+    const playerCount = await pingMinecraftServer(port);
 
-      // Check if server port is open
-      const running = await isInstanceRunning(uuid);
-      if (!running) {
-        if (state.emptySince !== null) {
-          console.log(`[auto-sleep] Server ${config.nickname} is no longer running, resetting timer`);
-        }
-        state.sleeping = false;
+    console.log(`[auto-sleep] ${config.nickname}: port=${port}, players=${playerCount}, emptySince=${state.emptySince ? Math.floor((Date.now() - state.emptySince) / 1000) + 's' : 'null'}`);
+
+    if (playerCount === -1) {
+      // Can't ping but port is open - server is running, assume 0 players
+      console.log(`[auto-sleep] Can't ping ${config.nickname}, assuming 0 players`);
+    }
+
+    if (playerCount === 0 || playerCount === -1) {
+      // Also check log-based player activity (Minekube tunneled players)
+      const logPlayers = logPlayerActivity[uuid];
+      const hasTunneledPlayers = logPlayers && logPlayers.onlinePlayers.size > 0;
+
+      if (hasTunneledPlayers) {
+        // Players connected via tunnel, don't sleep
         state.emptySince = null;
-        continue;
-      }
-
-      // Get port from config
-      const port = config.basePort || config.pingConfig?.port || 25565;
-      const playerCount = await pingMinecraftServer(port);
-
-      console.log(`[auto-sleep] ${config.nickname}: port=${port}, players=${playerCount}, emptySince=${state.emptySince ? Math.floor((Date.now() - state.emptySince) / 1000) + 's' : 'null'}`);
-
-      if (playerCount === -1) {
-        // Can't ping but port is open - server is running, assume 0 players
-        console.log(`[auto-sleep] Can't ping ${config.nickname}, assuming 0 players`);
-      }
-
-      if (playerCount === 0 || playerCount === -1) {
-        // Also check log-based player activity (Minekube tunneled players)
-        const logPlayers = logPlayerActivity[uuid];
-        const hasTunneledPlayers = logPlayers && logPlayers.onlinePlayers.size > 0;
-
-        if (hasTunneledPlayers) {
-          // Players connected via tunnel, don't sleep
-          state.emptySince = null;
-          state.lastActivity = Date.now();
-          console.log(`[auto-sleep] ${config.nickname} has ${logPlayers.onlinePlayers.size} tunneled player(s), skipping sleep`);
-        } else if (state.emptySince === null) {
-          state.emptySince = Date.now();
-          console.log(`[auto-sleep] Server ${config.nickname} is empty, timer started`);
-        } else {
-          const emptyDuration = (Date.now() - state.emptySince) / 1000;
-          const threshold = (settings.autoSleepMinutes || 3) * 60;
-          console.log(`[auto-sleep] ${config.nickname} empty for ${Math.floor(emptyDuration)}s / ${threshold}s`);
-          if (emptyDuration >= threshold && !state.sleeping) {
-            console.log(`[auto-sleep] SHUTTING DOWN ${config.nickname}!`);
-            state.sleeping = true;
-            await stopInstance(uuid, config.nickname);
-            setGracePeriod(uuid);
-          }
-        }
-      } else {
-        if (state.emptySince !== null) {
-          console.log(`[auto-sleep] Server ${config.nickname} now has ${playerCount} players, cancelling timer`);
-        }
-        state.emptySince = null;
-        state.lastPlayerCount = playerCount;
         state.lastActivity = Date.now();
+        console.log(`[auto-sleep] ${config.nickname} has ${logPlayers.onlinePlayers.size} tunneled player(s), skipping sleep`);
+      } else if (state.emptySince === null) {
+        state.emptySince = Date.now();
+        console.log(`[auto-sleep] Server ${config.nickname} is empty, timer started`);
+      } else {
+        const emptyDuration = (Date.now() - state.emptySince) / 1000;
+        const threshold = (settings.autoSleepMinutes || 3) * 60;
+        console.log(`[auto-sleep] ${config.nickname} empty for ${Math.floor(emptyDuration)}s / ${threshold}s`);
+        if (emptyDuration >= threshold && !state.sleeping) {
+          console.log(`[auto-sleep] SHUTTING DOWN ${config.nickname}!`);
+          state.sleeping = true;
+          await stopInstance(uuid, config.nickname);
+          setGracePeriod(uuid);
+        }
       }
+    } else {
+      if (state.emptySince !== null) {
+        console.log(`[auto-sleep] Server ${config.nickname} now has ${playerCount} players, cancelling timer`);
+      }
+      state.emptySince = null;
+      state.lastPlayerCount = playerCount;
+      state.lastActivity = Date.now();
     }
   } catch (err) {
-    console.error('[auto-sleep] Error:', err.message);
+    console.error(`[auto-sleep] Error checking ${file}:`, err.message);
   }
 }
 
