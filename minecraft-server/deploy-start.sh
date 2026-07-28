@@ -109,10 +109,20 @@ echo "[1/4] Starting router (no external deps — opens the health-checked port 
 start_service router "$NODE" --max-old-space-size="$ROUTER_HEAP" $GC_FLAGS "$BASE_DIR/web/index.js"
 
 echo "[2/4] Installing dependencies for daemon/web/middleware (if not already built)..."
-install_if_needed "$BASE_DIR"
-install_if_needed "$BASE_DIR/mcsmanager/daemon"
-install_if_needed "$BASE_DIR/mcsmanager/web"
-install_if_needed "$BASE_DIR/middleware"
+# Each install targets a separate --prefix dir with no shared state or
+# lockfile, so there's nothing unsafe about running them concurrently. A
+# Render Build Command (see package.json's own "build" script) is the real
+# fix for not paying this cost on every cold start at all, but that requires
+# a one-time manual dashboard change this repo can't make on the user's
+# behalf — running them in parallel here means a deploy that never gets that
+# dashboard change still finishes noticeably faster than three installs
+# fully serialized, since npm install is mostly waiting on the registry, not
+# spending CPU, and that waiting now overlaps instead of stacking.
+install_if_needed "$BASE_DIR" &
+install_if_needed "$BASE_DIR/mcsmanager/daemon" &
+install_if_needed "$BASE_DIR/mcsmanager/web" &
+install_if_needed "$BASE_DIR/middleware" &
+wait
 
 echo "[3/4] Ensuring architecture-specific lib binaries..."
 "$NODE" "$BASE_DIR/middleware/install-libs.js"

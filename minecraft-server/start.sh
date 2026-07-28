@@ -101,10 +101,11 @@ done
 echo "[1] Starting services..."
 restart_service router
 
-install_if_needed "$BASE_DIR"
-install_if_needed "$BASE_DIR/mcsmanager/daemon"
-install_if_needed "$BASE_DIR/mcsmanager/web"
-install_if_needed "$BASE_DIR/middleware"
+install_if_needed "$BASE_DIR" &
+install_if_needed "$BASE_DIR/mcsmanager/daemon" &
+install_if_needed "$BASE_DIR/mcsmanager/web" &
+install_if_needed "$BASE_DIR/middleware" &
+wait
 
 echo "  Ensuring architecture-specific lib binaries..."
 "$NODE" "$BASE_DIR/middleware/install-libs.js"

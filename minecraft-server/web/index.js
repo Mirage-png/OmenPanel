@@ -31,7 +31,12 @@ const INJECT_SCRIPT = THEME_LINK + `<script defer src="/api/omen/inject.js"></sc
  * page is ready, then gets that real page directly. No separate screen, no
  * client-side polling loop, nothing to dislike the look of.
  */
-const WEB_RETRY_MAX_MS = 100000;   // covers the ~60-90s cold starts actually observed
+// 100s (the original value here) turned out to be too short: a cold Render
+// boot has to install the daemon and web panel's own dependencies (~150-300
+// packages each) on a single shared vCPU before the web panel is even
+// spawnable, and that alone was measured taking longer than 100s, surfacing
+// as the plain-text fallback below instead of the retry actually working.
+const WEB_RETRY_MAX_MS = 280000;
 const WEB_RETRY_INTERVAL_MS = 2000;
 
 /**
