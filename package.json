@@ -4,7 +4,7 @@
   "private": true,
   "description": "PumpkinMC + MCSManager Minecraft server on Replit",
   "scripts": {
-    "start": "cd minecraft-server && node web/index.js"
+    "start": "bash minecraft-server/deploy-start.sh"
   },
   "engines": {
     "node": ">=18"
