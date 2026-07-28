@@ -123,11 +123,17 @@ echo "[2/4] Installing dependencies for daemon/web/middleware (if not already bu
 # dashboard change still finishes noticeably faster than three installs
 # fully serialized, since npm install is mostly waiting on the registry, not
 # spending CPU, and that waiting now overlaps instead of stacking.
-install_if_needed "$BASE_DIR" &
-install_if_needed "$BASE_DIR/mcsmanager/daemon" &
-install_if_needed "$BASE_DIR/mcsmanager/web" &
-install_if_needed "$BASE_DIR/middleware" &
-wait
+install_if_needed "$BASE_DIR" & install_pids="$!"
+install_if_needed "$BASE_DIR/mcsmanager/daemon" & install_pids="$install_pids $!"
+install_if_needed "$BASE_DIR/mcsmanager/web" & install_pids="$install_pids $!"
+install_if_needed "$BASE_DIR/middleware" & install_pids="$install_pids $!"
+# A bare `wait` waits for every background job of this shell -- including
+# the per-service `tail -F` log streamers started above, which run forever
+# by design. That's a real, previously-shipped bug: it made this whole
+# script hang here permanently on every single deploy, indistinguishable
+# from "slow" from the outside since nothing ever errored. Waiting on the
+# specific install PIDs only fixes it.
+wait $install_pids
 
 echo "[3/4] Ensuring architecture-specific lib binaries..."
 "$NODE" "$BASE_DIR/middleware/install-libs.js"
