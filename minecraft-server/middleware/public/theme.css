@@ -809,6 +809,15 @@ body.app-dark-theme .app-dark-theme ::-webkit-scrollbar-thumb:hover {
    OmenHosting custom components
    ============================================================ */
 
+/* Native console header shows a laptop icon + a bare, unlabeled node number
+   (MCSManager's internal daemon index) right next to the instance type tag —
+   confirmed live via the rendered markup (a laptop <anticon> + "2" in a
+   sibling span). Meaningless in this single-daemon deployment and reads as
+   a stray floating digit, so it's hidden outright rather than left in. */
+.menus-item-left .ant-typography.mb-0.ml-4 > .ml-16 {
+  display: none !important;
+}
+
 body.app-light-theme .omen-status-dot,
 body.app-dark-theme .omen-status-dot {
   display: inline-block;
@@ -1076,29 +1085,135 @@ body.app-dark-theme .omen-signup-link a:hover { text-decoration: underline; }
 .omen-dash-create-btn:hover { background: var(--pt-primary-300); }
 .omen-dash-create-btn:active { transform: translateY(1px); }
 
-/* Queue modal */
-body.app-light-theme .omen-queue__position,
-body.app-dark-theme .omen-queue__position {
-  font-size: 44px;
-  font-weight: 700;
-  color: var(--pt-primary-300);
-  margin: 14px 0 4px;
-  line-height: 1;
+/* ---------- Limbo modal ----------
+   Deliberately not the app's own dark theme: a light card on a solid black
+   backdrop, matching a specific reference the user supplied for
+   layout/copy — but with the panel's own green accent (--pt-primary-400),
+   not that reference's gold, per the same "green, not gold" rule that
+   governs the rest of this redesign. Every rule below is scoped under
+   .omen-limbo-modal/.omen-limbo__card so none of it leaks elsewhere.
+
+   The backdrop only covers the area right of the sidebar (when one is
+   present) rather than the full viewport: the sidebar stays visible and
+   clickable while a server is in Limbo or restoring, so someone can still
+   navigate to Files/Settings/etc. while waiting instead of being fully
+   blocked by the overlay. */
+.omen-limbo-modal.omen-modal {
+  background: rgba(0, 0, 0, 0.92) !important;
 }
 
-body.app-light-theme .omen-queue__icon,
-body.app-dark-theme .omen-queue__icon { color: var(--pt-primary-300); margin-bottom: 16px; }
-body.app-light-theme .omen-queue__meta,
-body.app-dark-theme .omen-queue__meta { color: var(--pt-faint); font-size: 11px; margin: 0 0 18px; }
-body.app-light-theme .omen-queue__leave,
-body.app-dark-theme .omen-queue__leave {
-  color: var(--pt-faint);
-  font-size: 12px;
-  margin: 16px 0 0;
-  cursor: pointer;
+body.omen-has-sidebar .omen-limbo-modal.omen-modal {
+  left: 220px;
 }
-body.app-light-theme .omen-queue__leave:hover,
-body.app-dark-theme .omen-queue__leave:hover { color: var(--pt-muted); }
+
+@media (max-width: 900px) {
+  body.omen-has-sidebar .omen-limbo-modal.omen-modal {
+    left: 0;
+  }
+}
+
+.omen-limbo-modal .omen-modal__card {
+  background: #e9eaed !important;
+  border: none !important;
+  border-radius: 16px !important;
+  padding: 40px 36px 32px !important;
+  width: 420px !important;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5) !important;
+}
+
+.omen-limbo__art {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+
+.omen-limbo__title {
+  color: #16171b;
+  font-size: 26px;
+  font-weight: 800;
+  text-align: center;
+  margin: 0 0 10px;
+}
+
+.omen-limbo__sub {
+  color: #55575f;
+  font-size: 14px;
+  text-align: center;
+  line-height: 1.5;
+  margin: 0 0 22px;
+}
+
+.omen-limbo__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 13px 20px;
+  background: var(--pt-primary-400);
+  color: #fff;
+  border: none;
+  border-radius: 9999px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.omen-limbo__btn:hover { background: var(--pt-primary-500); }
+.omen-limbo__btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.omen-limbo__caption {
+  text-align: center;
+  color: #7c7e86;
+  font-size: 12.5px;
+  margin: 14px 0 0;
+}
+
+.omen-limbo__queue-line {
+  text-align: center;
+  color: #33353c;
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 20px;
+}
+
+.omen-limbo__status {
+  text-align: center;
+  color: #33353c;
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 10px;
+}
+
+.omen-limbo__bar {
+  height: 6px;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 9999px;
+  overflow: hidden;
+}
+.omen-limbo__bar-fill {
+  height: 100%;
+  width: 40%;
+  background: var(--pt-primary-400);
+  border-radius: 9999px;
+  animation: omen-limbo-indeterminate 1.4s ease-in-out infinite;
+}
+@keyframes omen-limbo-indeterminate {
+  0% { margin-left: -40%; }
+  100% { margin-left: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .omen-limbo__bar-fill { animation: none; margin-left: 0; width: 100%; }
+}
+
+.omen-limbo__footer {
+  text-align: center;
+  color: #9a9ca3;
+  font-size: 11px;
+  margin-top: 26px;
+  line-height: 1.6;
+}
 
 /* ---------- Cloud backup / restore progress ---------- */
 body.app-light-theme .omen-backup-box,
@@ -1327,26 +1442,68 @@ body.app-dark-theme .omen-mod-row .omen-btn {
 }
 
 /* ---------- Resource usage (CPU / RAM / storage) ----------
-   The panel's own "Basic Infomation" card sits directly above wherever this
-   box is inserted (see addResourceUsage in inject.js), so the CSS adjacency
-   selector below uniquely targets exactly that card and hides it — a pure
-   CSS hide, never touching its markup. That panel re-renders on its own
-   polling cycle, so anything written into its DOM would just get wiped on
-   the next cycle; display:none from the outside has no such problem. */
-body.app-light-theme .card-panel:has(+ .omen-resource-box),
-body.app-dark-theme .card-panel:has(+ .omen-resource-box) {
+   Inserted as a sibling column in the console's own ant-design grid row
+   (see renderResourceUsage in inject.js), never touching the console
+   column's own class list — that column is Vue-managed and re-renders on
+   its own polling cycle, so any class edit made from outside would just get
+   wiped on the next cycle. The width/flex overrides below are pure CSS,
+   scoped narrowly via :has() so they only ever apply to a row we've
+   actually inserted our own column into. flex-wrap is already set on the
+   panel's own row for its own responsive layout, so a narrow viewport drops
+   this to a second line automatically rather than needing its own
+   media query. */
+body.app-light-theme .ant-row:has(> .omen-resource-box) > .layout-card-col:first-child,
+body.app-dark-theme .ant-row:has(> .omen-resource-box) > .layout-card-col:first-child {
+  flex: 1 1 0 !important;
+  max-width: calc(100% - 296px) !important;
+}
+
+/* "Basic Infomation" and the native "Manage Instance" card grid are now
+   fully covered by the sidebar (which mirrors every one of those cards —
+   see MANAGE_INSTANCE_TITLES in inject.js) and by this resource-usage box
+   itself, so both native columns are hidden outright. They sit at position
+   3 and 4 in the row once our resource box is inserted right after the
+   console column (order: console, resource box, Basic Infomation, Manage
+   Instance) — a pure CSS hide, not a DOM removal, so it can't be undone by
+   a Vue re-render the way removing the node would need re-fighting on
+   every mutation pass. */
+body.app-light-theme .ant-row:has(> .omen-resource-box) > .layout-card-col:nth-child(3),
+body.app-dark-theme .ant-row:has(> .omen-resource-box) > .layout-card-col:nth-child(3),
+body.app-light-theme .ant-row:has(> .omen-resource-box) > .layout-card-col:nth-child(4),
+body.app-dark-theme .ant-row:has(> .omen-resource-box) > .layout-card-col:nth-child(4) {
   display: none !important;
 }
 
 body.app-light-theme .omen-resource-box,
 body.app-dark-theme .omen-resource-box {
+  flex: 0 0 280px;
+  max-width: 280px;
+  box-sizing: border-box;
   padding: 16px 18px 18px;
-  margin-top: 0;
-  margin-bottom: 14px;
+  margin-left: 12px;
+  margin-right: 12px;
   background: var(--pt-surface) !important;
   border: 1px solid var(--pt-border) !important;
   border-radius: var(--pt-radius);
   box-shadow: var(--pt-shadow);
+}
+
+/* Below the width where the row would wrap the resource column onto its own
+   line anyway, drop the console column's width override so it goes back to
+   its natural full-width flex-basis instead of fighting the wrap. */
+@media (max-width: 900px) {
+  body.app-light-theme .ant-row:has(> .omen-resource-box) > .layout-card-col:first-child,
+  body.app-dark-theme .ant-row:has(> .omen-resource-box) > .layout-card-col:first-child {
+    flex: 0 0 100% !important;
+    max-width: 100% !important;
+  }
+  body.app-light-theme .omen-resource-box,
+  body.app-dark-theme .omen-resource-box {
+    flex: 0 0 100%;
+    max-width: 100%;
+    margin-left: 0;
+    margin-top: 14px;
+  }
 }
 
 body.app-light-theme .omen-resource-box__title,
@@ -1359,10 +1516,14 @@ body.app-dark-theme .omen-resource-box__title {
   margin-bottom: 14px;
 }
 
+/* Always a single column now: this box lives permanently in a fixed-width
+   (280px) column beside the console, not a full-width row, so a 3-across
+   grid keyed to viewport width (rather than the box's own width) would
+   cram every stat unreadably regardless of how wide the screen is. */
 body.app-light-theme .omen-resource-grid,
 body.app-dark-theme .omen-resource-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: 1fr;
   gap: 14px;
 }
 
@@ -1398,6 +1559,8 @@ body.app-dark-theme .omen-resource-row__icon {
   justify-content: center;
   width: 22px;
   height: 22px;
+  font-size: 13px;
+  line-height: 1;
   flex: none;
   border-radius: 6px;
   background: rgba(var(--pt-accent-rgb), 0.14);
@@ -1527,24 +1690,52 @@ body.app-dark-theme .omen-resource-row__sub {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
+  font-size: 15px;
+  line-height: 1;
   flex: none;
+  /* Emoji render in color regardless of the surrounding text color, so this
+     is purely about box sizing/alignment, not a currentColor icon anymore. */
+  font-style: normal;
 }
 
 /* Shift the panel's own fixed header and content over to make room for the
    sidebar. Only applied when the sidebar is actually rendered (an instance
    is open) via the omen-has-sidebar body class, so admin-wide pages like the
-   Instances list, Users, or Daemons keep the panel's normal full-width nav. */
+   Instances list, Users, or Daemons keep the panel's normal full-width nav.
+
+   `.global-app-container` centers itself on every other page via its own
+   `margin: 0 auto` against a 1360px max-width. Overriding margin-left on
+   that same element (an earlier version of this rule did exactly that)
+   fixes the left side but leaves margin-right as `auto`, which then
+   absorbs 100% of whatever space the max-width doesn't use — on any
+   screen wider than ~1580px that shoves the entire app hard against the
+   sidebar with a large dead gap on the right, instead of centering it in
+   the space actually left over. Shifting via `padding-left` on `body`
+   instead leaves `.global-app-container`'s own auto-centering completely
+   untouched; it just centers within a narrower available width. The fixed
+   sidebar itself is unaffected by this, since `position: fixed` elements
+   are positioned against the viewport, not their padded ancestor. */
+body.omen-has-sidebar {
+  padding-left: 220px;
+}
+
+/* The Vue app's own root mount node carries an *inline* `width: 100vw`
+   (verified live via its style attribute) — a viewport-relative unit that,
+   unlike a percentage, ignores the padding-left above entirely. Left alone
+   it renders 220px wider than the space actually available, pushing body
+   into horizontal scroll and throwing off the centering math above it.
+   `!important` is required here only because it's beating an inline style,
+   not for specificity against other stylesheet rules. */
+body.omen-has-sidebar #app-mount-point {
+  width: calc(100vw - 220px) !important;
+}
+
 body.app-light-theme.omen-has-sidebar .app-header-wrapper,
 body.app-dark-theme.omen-has-sidebar .app-header-wrapper {
   left: 220px;
   width: calc(100% - 220px);
-}
-
-body.app-light-theme.omen-has-sidebar .global-app-container,
-body.app-dark-theme.omen-has-sidebar .global-app-container {
-  margin-left: 220px;
 }
 
 /* Below the width where MCSManager's own layout already switches to its
@@ -1552,13 +1743,18 @@ body.app-dark-theme.omen-has-sidebar .global-app-container {
 @media (max-width: 900px) {
   .omen-sidebar { display: none; }
 
+  body.omen-has-sidebar {
+    padding-left: 0;
+  }
+
+  body.omen-has-sidebar #app-mount-point {
+    width: 100vw !important;
+  }
+
   body.app-light-theme.omen-has-sidebar .app-header-wrapper,
-  body.app-dark-theme.omen-has-sidebar .app-header-wrapper,
-  body.app-light-theme.omen-has-sidebar .global-app-container,
-  body.app-dark-theme.omen-has-sidebar .global-app-container {
+  body.app-dark-theme.omen-has-sidebar .app-header-wrapper {
     left: 0;
     width: 100%;
-    margin-left: 0;
   }
 }
 
@@ -1583,4 +1779,131 @@ body.app-light-theme .omen-limbo-banner__text b,
 body.app-dark-theme .omen-limbo-banner__text b {
   color: var(--pt-warn);
   font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* ============================================================
+   Instances list — Pterodactyl-style rows
+   The native page renders this as a card grid (each card in its own
+   ant-col at the standard Ant breakpoints). Reworked into a stacked list
+   of full-width rows, each row itself a flex layout: an emoji avatar
+   (::before — no DOM to touch), the server name, then its existing status
+   tag / Instance Type / Startup fields as inline chips pushed to the right
+   of the row instead of stacked underneath the title. Scoped everywhere
+   via :has(.instance-card) so this can't leak onto any other .ant-row on
+   pages that have nothing to do with the instance list (Users, Daemons,
+   the console page's own grid, etc). All class names here (.instance-card,
+   .instance-card-body, .instance-info-line, .title/.value) are the
+   panel's own, confirmed live rather than guessed.
+   ============================================================ */
+body.app-light-theme .ant-row:has(.instance-card) > .ant-col,
+body.app-dark-theme .ant-row:has(.instance-card) > .ant-col {
+  flex: 0 0 100% !important;
+  max-width: 100% !important;
+}
+
+body.app-light-theme .instance-card,
+body.app-dark-theme .instance-card {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  text-align: left !important;
+  gap: 18px;
+  padding: 14px 20px !important;
+}
+
+/* Avatar circle: a real inline SVG inserted by addInstanceListAvatars() in
+   inject.js (same chip() pattern as the sidebar/resource icons), not a CSS
+   ::before emoji — a raw emoji character here has the exact same
+   per-platform-rendering problem already fixed everywhere else in this
+   panel, plus a literal game-controller glyph read oddly for a server list
+   that isn't specifically about games. */
+body.app-light-theme .omen-instance-avatar,
+body.app-dark-theme .omen-instance-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex: none;
+}
+
+body.app-light-theme .instance-card .card-panel-title,
+body.app-dark-theme .instance-card .card-panel-title {
+  flex: 0 0 auto;
+  width: 240px;
+  min-width: 0;
+  border-bottom: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+body.app-light-theme .instance-card .card-panel-title h5,
+body.app-dark-theme .instance-card .card-panel-title h5 {
+  font-size: 14px !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+body.app-light-theme .instance-card .card-panel-content,
+body.app-dark-theme .instance-card .card-panel-content {
+  flex: 1;
+  min-width: 0;
+  padding: 0 !important;
+}
+
+body.app-light-theme .instance-card .instance-card-body,
+body.app-dark-theme .instance-card .instance-card-body {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+}
+
+body.app-light-theme .instance-card .instance-card-body > .ant-typography,
+body.app-dark-theme .instance-card .instance-card-body > .ant-typography {
+  display: flex !important;
+  align-items: center;
+  gap: 22px;
+  flex-wrap: wrap;
+}
+
+body.app-light-theme .instance-card .mb-8.flex,
+body.app-dark-theme .instance-card .mb-8.flex {
+  margin-bottom: 0 !important;
+}
+
+body.app-light-theme .instance-card .instance-info-line,
+body.app-dark-theme .instance-card .instance-info-line {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+body.app-light-theme .instance-card .instance-info-line .title,
+body.app-dark-theme .instance-card .instance-info-line .title {
+  font-size: 10px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--pt-faint) !important;
+}
+
+body.app-light-theme .instance-card .instance-info-line .value,
+body.app-dark-theme .instance-card .instance-info-line .value {
+  font-size: 13px !important;
+  font-weight: 600;
+  color: var(--pt-text) !important;
+}
+
+@media (max-width: 900px) {
+  body.app-light-theme .instance-card,
+  body.app-dark-theme .instance-card {
+    flex-wrap: wrap;
+  }
+  body.app-light-theme .instance-card .instance-card-body,
+  body.app-dark-theme .instance-card .instance-card-body {
+    flex-wrap: wrap;
+  }
 }

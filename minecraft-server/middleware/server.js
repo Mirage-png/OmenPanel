@@ -1920,7 +1920,7 @@ const server = http.createServer((req, res) => {
     const idx = queue.findIndex(e => e.uuid === uuid);
     const position = idx === -1 ? null : idx + 1;
     return sendJSON(res, 200, {
-      position, running: runningCount, max: MAX_RUNNING,
+      position, running: runningCount, max: MAX_RUNNING, queueLength: queue.length,
       estimatedWaitMinutes: estimateWaitMinutes(position)
     });
   }
@@ -1942,7 +1942,7 @@ const server = http.createServer((req, res) => {
         if (queue.find(e => e.uuid === uuid)) {
           const idx = queue.findIndex(e => e.uuid === uuid);
           return sendJSON(res, 200, {
-            position: idx + 1, running: runningCount, max: MAX_RUNNING,
+            position: idx + 1, running: runningCount, max: MAX_RUNNING, queueLength: queue.length,
             estimatedWaitMinutes: estimateWaitMinutes(idx + 1)
           });
         }
@@ -1969,7 +1969,7 @@ const server = http.createServer((req, res) => {
         const pos = queue.length;
         console.log(`[queue] ${name || uuid} joined queue at #${pos} (${runningCount}/${MAX_RUNNING})`);
         sendJSON(res, 200, {
-          position: pos, running: runningCount, max: MAX_RUNNING,
+          position: pos, running: runningCount, max: MAX_RUNNING, queueLength: queue.length,
           estimatedWaitMinutes: estimateWaitMinutes(pos)
         });
       } catch { sendJSON(res, 400, { error: 'Invalid request' }); }

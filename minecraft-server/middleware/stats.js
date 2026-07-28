@@ -125,14 +125,18 @@ async function findPidByCwd(targetDir) {
   return candidates[0];
 }
 
-/** %CPU and resident set size for a pid, via `ps` (no native deps). */
+/** %CPU, resident set size, and elapsed run time for a pid, via `ps` (no native deps). */
 async function readProcessUsage(pid) {
   try {
-    const out = await run('ps', ['-o', 'pcpu=,rss=', '-p', String(pid)]);
+    const out = await run('ps', ['-o', 'pcpu=,rss=,etimes=', '-p', String(pid)]);
     const line = out.trim().split('\n')[0] || '';
-    const [cpu, rssKb] = line.trim().split(/\s+/).map(Number);
+    const [cpu, rssKb, etimes] = line.trim().split(/\s+/).map(Number);
     if (!Number.isFinite(cpu) || !Number.isFinite(rssKb)) return null;
-    return { cpuPercent: cpu, memoryBytes: rssKb * 1024 };
+    return {
+      cpuPercent: cpu,
+      memoryBytes: rssKb * 1024,
+      uptimeSeconds: Number.isFinite(etimes) ? etimes : null
+    };
   } catch {
     return null; // pid exited between lookup and read
   }
@@ -174,7 +178,7 @@ function directorySize(dir) {
  * @returns {Promise<{
  *   running: boolean, pid: number|null,
  *   cpuPercent: number, memoryBytes: number, memoryPercent: number,
- *   systemMemoryBytes: number, diskBytes: number
+ *   systemMemoryBytes: number, diskBytes: number, uptimeSeconds: number|null
  * }>}
  */
 async function getInstanceStats(serverDir) {
@@ -183,12 +187,12 @@ async function getInstanceStats(serverDir) {
 
   const pid = await findPidByCwd(serverDir);
   if (!pid) {
-    return { running: false, pid: null, cpuPercent: 0, memoryBytes: 0, memoryPercent: 0, systemMemoryBytes, diskBytes };
+    return { running: false, pid: null, cpuPercent: 0, memoryBytes: 0, memoryPercent: 0, systemMemoryBytes, diskBytes, uptimeSeconds: null };
   }
 
   const usage = await readProcessUsage(pid);
   if (!usage) {
-    return { running: false, pid: null, cpuPercent: 0, memoryBytes: 0, memoryPercent: 0, systemMemoryBytes, diskBytes };
+    return { running: false, pid: null, cpuPercent: 0, memoryBytes: 0, memoryPercent: 0, systemMemoryBytes, diskBytes, uptimeSeconds: null };
   }
 
   return {
@@ -198,7 +202,8 @@ async function getInstanceStats(serverDir) {
     memoryBytes: usage.memoryBytes,
     memoryPercent: systemMemoryBytes ? (usage.memoryBytes / systemMemoryBytes) * 100 : 0,
     systemMemoryBytes,
-    diskBytes
+    diskBytes,
+    uptimeSeconds: usage.uptimeSeconds
   };
 }
 

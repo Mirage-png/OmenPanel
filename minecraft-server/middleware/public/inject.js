@@ -457,14 +457,77 @@
   // same breakpoint where MCSManager's own layout already switches to its
   // mobile fab-menu, so nothing fights that existing responsive behavior.
 
+  // Custom icon chips — deliberately not the OS's native emoji font (an
+  // actual Unicode emoji character renders as a completely different glyph
+  // per platform: Apple's own art on macOS, Noto/Twemoji-ish elsewhere, a
+  // plain box on anything with no matching font). Each of these is instead
+  // a small self-contained SVG, pixel-identical everywhere this panel is
+  // opened, with no font or external asset dependency.
+  //
+  // Colored one-hue-per-item at first (blue/purple/orange/pink/...), which
+  // looked like an unrelated sticker pack next to the rest of this panel —
+  // none of those colors exist anywhere else in the app. Rebuilt to reuse
+  // the exact tinted-circle-plus-green-glyph language the resource-usage
+  // icons already used before any of this redesign started (a soft
+  // rgba(--pt-accent-rgb) fill with a --pt-primary-300 glyph), the same
+  // green the sidebar's own active-item highlight and every status dot in
+  // this app already use — so these read as part of one system instead of
+  // a decoration bolted on top of it. Differentiation between items comes
+  // from the glyph shape, not a rainbow of unrelated hues.
+  function chip(glyph) {
+    return '<svg width="18" height="18" viewBox="0 0 24 24">' +
+      '<circle cx="12" cy="12" r="12" fill="rgba(34,197,94,0.16)"/>' +
+      '<g fill="none" stroke="#4ade80" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + glyph + '</g>' +
+    '</svg>';
+  }
+
   var SIDEBAR_ICONS = {
-    console: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>',
-    files: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>',
-    plugins: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/><circle cx="12" cy="12" r="4"/></svg>',
-    backups: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25"/><polyline points="12 12 12 21"/><polyline points="9 18 12 21 15 18"/></svg>',
-    network: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
-    settings: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>'
+    console: chip('<path d="M7 8l3 3-3 3"/><path d="M12 15h5"/>'),
+    files: chip('<path d="M6 8h4l1.5 2H18a1 1 0 011 1v6a1 1 0 01-1 1H6a1 1 0 01-1-1V9a1 1 0 011-1z"/>'),
+    plugins: chip('<path d="M9 8h3V6.5a1.5 1.5 0 013 0V8h3v3h1.5a1.5 1.5 0 010 3H18v3h-3v-1.5a1.5 1.5 0 00-3 0V17H9v-3H7.5a1.5 1.5 0 010-3H9V8z"/>'),
+    modpacks: chip('<path d="M12 6l6 3.5v5L12 18l-6-3.5v-5z"/><path d="M6 9.5l6 3.5 6-3.5M12 13v5"/>'),
+    backups: chip('<path d="M8 17a3.5 3.5 0 010-7 4.5 4.5 0 018.6-1.5A3.5 3.5 0 0117 17H8z"/>'),
+    network: chip('<circle cx="12" cy="12" r="6"/><path d="M6 12h12"/><path d="M12 6c1.8 1.8 1.8 10.2 0 12M12 6c-1.8 1.8-1.8 10.2 0 12" stroke-width="1.3"/>'),
+    settings: chip('<circle cx="12" cy="12" r="2.4"/><path d="M12 7.5v-2M12 18.5v-2M16.5 12h2M5.5 12h2M15.2 8.8l1.4-1.4M7.4 16.6l1.4-1.4M15.2 15.2l1.4 1.4M7.4 7.4l1.4 1.4" stroke-width="1.5"/>'),
+    'mi-configuration-files': chip('<path d="M8 6h6l3 3v9a1 1 0 01-1 1H8a1 1 0 01-1-1V7a1 1 0 011-1z"/><path d="M9.5 13h5M9.5 16h5"/>'),
+    'mi-file-management': chip('<path d="M5 8h5l1.5 2H19a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1V9a1 1 0 011-1z"/>'),
+    'mi-java-manager': chip('<path d="M8 10h7v4a3.5 3.5 0 01-3.5 3.5h-1A3.5 3.5 0 017 14v-4z"/><path d="M15 11h1.5a1.5 1.5 0 010 3H15"/>'),
+    'mi-scheduled-tasks': chip('<circle cx="12" cy="12.5" r="6"/><path d="M12 9v3.5l2.5 1.5" stroke-width="1.5"/><path d="M9.5 5.5h5"/>'),
+    'mi-event-tasks': chip('<path d="M13 5l-6 8h4l-1 6 6-8h-4z" stroke-linejoin="round"/>'),
+    'mi-terminal-settings': chip('<rect x="5" y="8" width="14" height="9" rx="1.5"/><path d="M8 11.2h.01M11 11.2h.01M14 11.2h.01M8 14h6" stroke-width="1.5"/>'),
+    'mi-instance-settings': chip('<path d="M8.5 15.5L15 9a2 2 0 012.8 2.8L11.3 18l-3.3.6z"/>'),
+    'mi-minecraft-players-query': chip('<circle cx="9" cy="10" r="2.2"/><circle cx="16" cy="10" r="2.2"/><path d="M5 18c0-2.2 1.8-4 4-4s4 1.8 4 4M13 18c0-2.2 1.8-4 4-4s4 1.8 4 4" stroke-width="1.5"/>'),
+    default: chip('<circle cx="12" cy="12" r="1.6" fill="#4ade80" stroke="none"/>')
   };
+
+  // Clicks the actual native "Go" link inside one of MCSManager's own
+  // "Manage Instance" cards, found by its exact title text. Reusing the
+  // real card's own click target (rather than guessing a hash route or
+  // whether something is a route vs. a modal) means the sidebar entry keeps
+  // working even for entries that open an admin-gated modal (Instance
+  // Settings) rather than navigating.
+  function clickNativeCard(title) {
+    var textEl = findExactText(title);
+    if (!textEl) return false;
+    var card = textEl.closest('.inner-card-wrapper');
+    if (!card) return false;
+    var link = card.querySelector('a[href="javascript:void(0);"]') || card.querySelector('a');
+    (link || card).click();
+    return true;
+  }
+
+  // Mirrors MCSManager's own "Manage Instance" card grid one-for-one so the
+  // sidebar can fully replace it as a navigation surface.
+  var MANAGE_INSTANCE_TITLES = [
+    'Configuration Files',
+    'File Management',
+    'Java Manager',
+    'Scheduled Tasks',
+    'Event Tasks',
+    'Terminal Settings',
+    'Instance Settings',
+    'Minecraft Players Query'
+  ];
 
   var SIDEBAR_ITEMS = [
     {
@@ -483,6 +546,14 @@
       go: function () { openModBrowser('plugin'); }
     },
     {
+      // The native "Manage Instance" grid (now hidden — see theme.css) held
+      // both of these; Plugins above covers "Plugin Manager", this one
+      // covers "Modpack Installer" so that feature stays reachable.
+      group: 'YOUR SERVER', key: 'modpacks', label: 'Modpacks',
+      match: null,
+      go: function () { openModBrowser('modpack'); }
+    },
+    {
       group: 'YOUR SERVER', key: 'backups', label: 'Backups',
       match: null,
       go: function () { showBackupModal(); }
@@ -498,6 +569,16 @@
       go: function (q) { window.location.hash = '/instances/terminal/serverConfig' + q; }
     }
   ];
+
+  MANAGE_INSTANCE_TITLES.forEach(function (title) {
+    SIDEBAR_ITEMS.push({
+      group: 'MANAGE INSTANCE',
+      key: 'mi-' + title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+      label: title,
+      match: null,
+      go: function () { clickNativeCard(title); }
+    });
+  });
 
   function currentHashQuery() {
     var hash = window.location.hash || '';
@@ -547,7 +628,7 @@
       byGroup[groupName].forEach(function (it) {
         var active = it.match && it.match.test(hash);
         html += '<div class="omen-sidebar__item' + (active ? ' is-active' : '') + '" data-sidebar-key="' + it.key + '">' +
-          '<span class="omen-sidebar__icon">' + SIDEBAR_ICONS[it.key] + '</span>' +
+          '<span class="omen-sidebar__icon">' + (SIDEBAR_ICONS[it.key] || SIDEBAR_ICONS.default) + '</span>' +
           '<span>' + it.label + '</span>' +
         '</div>';
       });
@@ -784,102 +865,173 @@
     if (queuePollTimer) { clearInterval(queuePollTimer); queuePollTimer = null; }
   }
 
-  function formatWait(minutes) {
-    if (!minutes) return 'a few minutes';
-    if (minutes < 60) return '~' + minutes + ' min';
-    var h = Math.floor(minutes / 60);
-    var m = minutes % 60;
-    return '~' + h + 'h' + (m ? ' ' + m + 'm' : '');
+  // Original artwork (not a copy of any reference illustration) — simple
+  // blob-monster characters, location pins, and an orbit ring around a
+  // moon, evoking "searching for a lost server."
+  var LIMBO_ILLUSTRATION =
+    '<svg width="168" height="118" viewBox="0 0 168 118" xmlns="http://www.w3.org/2000/svg">' +
+      '<circle cx="84" cy="50" r="40" fill="#e6e7eb"/>' +
+      '<circle cx="27" cy="17" r="1.5" fill="#cfd1d6"/>' +
+      '<circle cx="144" cy="25" r="1.5" fill="#cfd1d6"/>' +
+      '<circle cx="131" cy="64" r="1.5" fill="#cfd1d6"/>' +
+      '<path d="M23 43h5M25.5 40.5v5" stroke="#cfd1d6" stroke-width="1.3" stroke-linecap="round"/>' +
+      '<ellipse cx="84" cy="53" rx="54" ry="16" fill="none" stroke="#262b3a" stroke-width="1.2" transform="rotate(-8 84 53)"/>' +
+      '<g transform="translate(102,20)"><path d="M0-12c6 0 9 4.5 9 9s-4 9-9 15c-5-6-9-10.5-9-15s3-9 9-9z" fill="#2f6fed"/><circle cy="-3" r="3.2" fill="#fff"/></g>' +
+      '<g transform="translate(65,26) scale(.75)"><path d="M0-12c6 0 9 4.5 9 9s-4 9-9 15c-5-6-9-10.5-9-15s3-9 9-9z" fill="#1f2437"/><circle cy="-3" r="3.2" fill="#fff"/></g>' +
+      '<g transform="translate(123,40) scale(.7)"><path d="M0-12c6 0 9 4.5 9 9s-4 9-9 15c-5-6-9-10.5-9-15s3-9 9-9z" fill="#c9ccd3"/><circle cy="-3" r="3.2" fill="#fff"/></g>' +
+      '<g transform="translate(39,60) scale(.7)"><path d="M0-12c6 0 9 4.5 9 9s-4 9-9 15c-5-6-9-10.5-9-15s3-9 9-9z" fill="#2f6fed"/><circle cy="-3" r="3.2" fill="#fff"/></g>' +
+      '<g transform="translate(45,94)">' +
+        '<ellipse cy="6" rx="13" ry="14" fill="#20242f"/>' +
+        '<path d="M-13-2a13 10 0 0 1 26 0z" fill="#2f6fed"/>' +
+        '<circle cx="-3" cy="4" r="4.2" fill="#fff"/><circle cx="-3" cy="4" r="1.8" fill="#20242f"/>' +
+        '<line x1="10" y1="0" x2="18" y2="-14" stroke="#20242f" stroke-width="2.4" stroke-linecap="round"/>' +
+      '</g>' +
+      '<g transform="translate(125,94)">' +
+        '<ellipse cy="6" rx="13" ry="14" fill="#20242f"/>' +
+        '<path d="M-13-2a13 10 0 0 1 26 0z" fill="#2f6fed"/>' +
+        '<circle cx="3" cy="4" r="4.2" fill="#fff"/><circle cx="3" cy="4" r="1.8" fill="#20242f"/>' +
+        '<circle cx="17" cy="-6" r="6" fill="none" stroke="#20242f" stroke-width="2.2"/>' +
+        '<line x1="21.5" y1="-1.5" x2="27" y2="4" stroke="#20242f" stroke-width="2.2" stroke-linecap="round"/>' +
+      '</g>' +
+      '<g transform="translate(87,102)"><ellipse cy="5" rx="10" ry="11" fill="#2f2f3a"/><ellipse cy="-4" rx="7" ry="6" fill="#2f6fed"/></g>' +
+    '</svg>';
+
+  var WAKE_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+
+  var limboModalEl = null;
+  var limboRestorePollTimer = null;
+
+  function limboBody(state, data) {
+    data = data || {};
+    var title = state === 'restoring' ? 'Restoring Server' : 'Server in Limbo';
+    var sub = state === 'restoring'
+      ? 'Hang tight — your server is starting back up.'
+      : state === 'queued'
+        ? 'This server is in the cold, dark void — click below to bring it back to life.'
+        : 'This server is in limbo to save resources — wake it below to bring it back online.';
+
+    var html = '<div class="omen-limbo__art">' + LIMBO_ILLUSTRATION + '</div>' +
+      '<h2 class="omen-limbo__title">' + title + '</h2>' +
+      '<p class="omen-limbo__sub">' + sub + '</p>';
+
+    if (state === 'idle') {
+      html += '<button class="omen-limbo__btn" id="omen-queue-join-btn" type="button">' + WAKE_ICON + '<span>Wake server</span></button>' +
+        '<p class="omen-limbo__caption">Takes about a minute. We’ll bring back the latest save.</p>';
+    } else if (state === 'queued') {
+      html += '<p class="omen-limbo__queue-line">You are in the queue (' +
+          (data.position != null ? data.position : '—') + '/' + (data.queueLength != null ? data.queueLength : '—') +
+        ')</p>' +
+        '<button class="omen-limbo__btn omen-limbo__btn--leave" id="omen-queue-leave" type="button">Leave Queue</button>';
+    } else if (state === 'restoring') {
+      html += '<p class="omen-limbo__status">Waking your server…</p>' +
+        '<div class="omen-limbo__bar"><div class="omen-limbo__bar-fill"></div></div>';
+    }
+
+    html += '<div class="omen-limbo__footer">© ' + new Date().getFullYear() +
+      ' OmenHosting<br>You’re currently connected to the OmenHosting panel</div>';
+    return html;
+  }
+
+  function bindLimboHandlers() {
+    if (!limboModalEl) return;
+    var joinBtn = limboModalEl.querySelector('#omen-queue-join-btn');
+    if (joinBtn) joinBtn.addEventListener('click', onWakeServerClick);
+    var leaveBtn = limboModalEl.querySelector('#omen-queue-leave');
+    if (leaveBtn) leaveBtn.addEventListener('click', onLeaveQueueClick);
+  }
+
+  function setLimboState(state, data) {
+    if (!limboModalEl) return;
+    var card = limboModalEl.querySelector('.omen-modal__card');
+    card.innerHTML = limboBody(state, data);
+    bindLimboHandlers();
+    if (state === 'restoring') startRestorePoll();
+  }
+
+  function onWakeServerClick() {
+    var btn = this;
+    btn.disabled = true;
+    fetch('/api/omen/queue/join', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uuid: queueUserUuid })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        queueHandled = true;
+        if (data.position === 0) {
+          setLimboState('restoring');
+        } else {
+          setLimboState('queued', data);
+          startQueuePoll();
+        }
+      })
+      .catch(function () { btn.disabled = false; });
+  }
+
+  function onLeaveQueueClick() {
+    fetch('/api/omen/queue/leave', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uuid: queueUserUuid })
+    }).catch(function () {});
+    stopQueuePoll();
+    if (limboModalEl) { limboModalEl.remove(); limboModalEl = null; }
   }
 
   function startQueuePoll() {
     stopQueuePoll();
     queuePollTimer = setInterval(function () {
-      if (document.hidden) return;
+      if (document.hidden || !limboModalEl) return;
       getJSON('/api/omen/queue/position?uuid=' + queueUserUuid).then(function (data) {
-        if (!data) return;
-        var posEl = document.getElementById('omen-queue-position');
-        var runEl = document.getElementById('omen-queue-running');
-        var waitEl = document.getElementById('omen-queue-wait');
-        if (posEl) posEl.textContent = data.position || '-';
-        if (runEl) runEl.textContent = data.running + ' / ' + data.max + ' running';
-        if (waitEl) waitEl.textContent = 'Estimated wait: ' + formatWait(data.estimatedWaitMinutes);
+        if (!data || !limboModalEl) return;
         if (data.position === 0 || data.position === null) {
-          var m = document.querySelector('.omen-queue-modal');
-          if (m) m.remove();
           stopQueuePoll();
+          setLimboState('restoring');
+        } else {
+          setLimboState('queued', data);
         }
       });
     }, 3000);
   }
 
+  /**
+   * The "Restoring Server" screen polls for the console's own status tag to
+   * actually say Running rather than guessing a fixed delay — a slow boot
+   * (first-time jar download, big world restore) shouldn't cut the screen
+   * away early, and a fast one shouldn't leave it hanging. Capped at ~80s so
+   * a tag-detection miss can't strand the screen forever.
+   */
+  function startRestorePoll() {
+    if (limboRestorePollTimer) return;
+    var attempts = 0;
+    limboRestorePollTimer = setInterval(function () {
+      attempts++;
+      var tags = document.querySelectorAll('.ant-tag');
+      var running = false;
+      for (var i = 0; i < tags.length; i++) {
+        if (tags[i].textContent.trim().toLowerCase() === 'running') { running = true; break; }
+      }
+      if (running || attempts > 40) {
+        clearInterval(limboRestorePollTimer);
+        limboRestorePollTimer = null;
+        if (limboModalEl) { limboModalEl.remove(); limboModalEl = null; }
+      }
+    }, 2000);
+  }
+
   function showQueueModal() {
-    if (document.querySelector('.omen-queue-modal') || !queueUserUuid) return;
-
-    var modal = buildModal('omen-queue-modal',
-      '<div class="omen-queue__icon" style="text-align:center">' +
-        '<svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">' +
-        '<rect x="3" y="4" width="18" height="16" rx="2"/><line x1="8" y1="2" x2="8" y2="6"/>' +
-        '<line x1="16" y1="2" x2="16" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>' +
-      '</div>' +
-      '<h2 class="omen-modal__title">Server in Limbo</h2>' +
-      '<p class="omen-modal__sub">Only one server can run at a time — wake yours and it starts as soon as a slot is free.</p>' +
-      '<div id="omen-queue-position-box" style="display:none;text-align:center">' +
-        '<p class="omen-modal__sub" style="margin:0 0 2px;font-weight:600;color:var(--pt-muted)">IN THE LIMBO QUEUE</p>' +
-        '<div class="omen-queue__position">#<span id="omen-queue-position">-</span></div>' +
-        '<p class="omen-modal__sub" style="margin:0 0 4px">Your position in queue</p>' +
-        '<p class="omen-queue__meta" id="omen-queue-running">0 / 0 running</p>' +
-        '<p class="omen-queue__meta" id="omen-queue-wait">Estimated wait: —</p>' +
-      '</div>' +
-      '<button class="omen-btn" id="omen-queue-join-btn" type="button" style="width:100%">Wake Server</button>' +
-      '<p class="omen-queue__leave" id="omen-queue-leave" style="display:none;text-align:center">Leave queue</p>');
-
-    var joinBtn = modal.querySelector('#omen-queue-join-btn');
-
-    joinBtn.addEventListener('click', function () {
-      joinBtn.disabled = true;
-      joinBtn.textContent = 'Waking…';
-      fetch('/api/omen/queue/join', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uuid: queueUserUuid })
-      })
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-          queueHandled = true;
-          if (data.position === 0) {
-            modal.remove();
-            stopQueuePoll();
-          } else {
-            modal.querySelector('#omen-queue-position-box').style.display = 'block';
-            modal.querySelector('#omen-queue-position').textContent = data.position;
-            modal.querySelector('#omen-queue-running').textContent =
-              data.running + ' / ' + data.max + ' running';
-            modal.querySelector('#omen-queue-wait').textContent =
-              'Estimated wait: ' + formatWait(data.estimatedWaitMinutes);
-            joinBtn.style.display = 'none';
-            modal.querySelector('#omen-queue-leave').style.display = 'block';
-            startQueuePoll();
-          }
-        })
-        .catch(function () { joinBtn.disabled = false; joinBtn.textContent = 'Wake Server'; });
-    });
-
-    modal.querySelector('#omen-queue-leave').addEventListener('click', function () {
-      fetch('/api/omen/queue/leave', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uuid: queueUserUuid })
-      }).catch(function () {});
-      stopQueuePoll();
-      modal.remove();
-    });
+    if (limboModalEl || !queueUserUuid) return;
+    limboModalEl = el('div', 'omen-modal omen-limbo-modal',
+      '<div class="omen-modal__card omen-limbo__card">' + limboBody('idle') + '</div>');
+    document.body.appendChild(limboModalEl);
+    bindLimboHandlers();
   }
 
   function checkQueueStatus() {
     var uuid = getInstanceUuid();
     if (!uuid || queueHandled) return;
-    if (document.querySelector('.omen-queue-modal')) return;
+    if (limboModalEl) return;
 
     var tags = document.querySelectorAll('.ant-tag');
     for (var i = 0; i < tags.length; i++) {
@@ -972,6 +1124,23 @@
     var node = textEl;
     while (node && node.parentNode !== list) node = node.parentNode;
     if (node && node.parentNode === list) node.remove();
+  }
+
+  // ─── Instances list: avatar circle per row ────────────────────
+  // A real inline SVG (chip(), same as every other icon in this panel)
+  // inserted as each card's actual first child, rather than a CSS ::before
+  // with a raw emoji character — see the comment on .omen-instance-avatar
+  // in theme.css for why.
+  var INSTANCE_AVATAR = chip('<rect x="6" y="6" width="12" height="3.2" rx="1"/><rect x="6" y="10.4" width="12" height="3.2" rx="1"/><rect x="6" y="14.8" width="12" height="3.2" rx="1"/><circle cx="8.2" cy="7.6" r=".6" fill="#fff" stroke="none"/><circle cx="8.2" cy="12" r=".6" fill="#fff" stroke="none"/><circle cx="8.2" cy="16.4" r=".6" fill="#fff" stroke="none"/>');
+
+  function addInstanceListAvatars() {
+    var cards = document.querySelectorAll('.instance-card:not([data-omen-avatar])');
+    for (var i = 0; i < cards.length; i++) {
+      var card = cards[i];
+      card.setAttribute('data-omen-avatar', '1');
+      var avatar = el('div', 'omen-instance-avatar', INSTANCE_AVATAR);
+      card.insertBefore(avatar, card.firstChild);
+    }
   }
 
   /**
@@ -1214,10 +1383,13 @@
     return null;
   }
 
+  // Same tinted-circle-plus-green-glyph chip as the sidebar — see chip()'s
+  // comment for why this replaced a different-hue-per-icon scheme.
   var RESOURCE_ICONS = {
-    cpu: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>',
-    ram: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="7" width="18" height="10" rx="1"/><path d="M7 7V4M12 7V4M17 7V4M7 20v-3M12 20v-3M17 20v-3"/></svg>',
-    storage: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.66 3.58 3 8 3s8-1.34 8-3V5M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3"/></svg>'
+    uptime: chip('<circle cx="12" cy="12.5" r="6"/><path d="M12 9v3.5l2.5 1.5" stroke-width="1.5"/>'),
+    cpu: chip('<rect x="7" y="7" width="10" height="10" rx="1.5"/><rect x="10" y="10" width="4" height="4"/><path d="M9 4v2M15 4v2M9 18v2M15 18v2M4 9h2M4 15h2M18 9h2M18 15h2" stroke-width="1.4"/>'),
+    ram: chip('<rect x="4" y="9" width="16" height="7" rx="1"/><path d="M7 9V6.5M11 9V6.5M15 9V6.5M7 16v2.5M11 16v2.5M15 16v2.5" stroke-width="1.4"/>'),
+    storage: chip('<ellipse cx="12" cy="7" rx="7" ry="2.6"/><path d="M5 7v10c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6V7M5 12c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6" stroke-width="1.4"/>')
   };
 
   /**
@@ -1251,29 +1423,36 @@
       return;
     }
 
-    var titleEl = findExactText('Basic Infomation');
-    var card = titleEl && titleEl.closest('.card-panel');
-    if (!card) {
-      // Not on a page showing that card right now.
+    // Sits beside the console itself rather than below the "Basic Infomation"
+    // card: found via the console/terminal element's own ant-design grid
+    // column, then inserted as a sibling column in the same row so the
+    // panel's flex-wrap (already in place for its own responsive layout)
+    // naturally drops it to a new line on narrow screens.
+    var consoleArea = document.querySelector('.console-wrapper, .terminal-wrapper, [class*="terminal"]');
+    var col = consoleArea && consoleArea.closest('.layout-card-col');
+    var row = col && col.parentElement;
+    if (!row) {
+      // Not on the console page right now.
       if (existing) existing.remove();
       return;
     }
 
     var box = existing;
-    if (!box || box.getAttribute('data-uuid') !== uuid || box.previousElementSibling !== card) {
+    if (!box || box.getAttribute('data-uuid') !== uuid || box.parentElement !== row) {
       if (existing) existing.remove();
       box = el('div', 'omen-resource-box');
       box.setAttribute('data-uuid', uuid);
-      card.parentNode.insertBefore(box, card.nextSibling);
+      row.insertBefore(box, col.nextSibling);
     }
 
     if (!resourceStats || resourceStats.uuid !== uuid) {
       if (!box.dataset.sig) {
         box.innerHTML = '<div class="omen-resource-box__title">Resource Usage</div>' +
           '<div class="omen-resource-grid">' +
-            resourceRow('cpu', 'CPU', '—', null, true) +
-            resourceRow('ram', 'RAM', '—', null, true) +
-            resourceRow('storage', 'Storage', '—', null, true) +
+            resourceRow('uptime', 'Uptime', '—', null, true) +
+            resourceRow('cpu', 'CPU Load', '—', null, true) +
+            resourceRow('ram', 'Memory', '—', null, true) +
+            resourceRow('storage', 'Disk', '—', null, true) +
           '</div>';
       }
       return;
@@ -1294,10 +1473,22 @@
     box.innerHTML =
       '<div class="omen-resource-box__title">Resource Usage</div>' +
       '<div class="omen-resource-grid">' +
-        resourceRow('cpu', 'CPU', running ? cpuPct.toFixed(1) + '%' : 'Offline', running ? cpuPct : null, !running) +
-        resourceRow('ram', 'RAM', running ? formatBytes(resourceStats.memoryBytes) : 'Offline', running ? memPct : null, !running) +
-        resourceRow('storage', 'Storage', formatBytes(resourceStats.diskBytes), diskPct, false, diskSub) +
+        resourceRow('uptime', 'Uptime', running ? formatUptime(resourceStats.uptimeSeconds) : 'Offline', null, !running) +
+        resourceRow('cpu', 'CPU Load', running ? cpuPct.toFixed(1) + '%' : 'Offline', running ? cpuPct : null, !running) +
+        resourceRow('ram', 'Memory', running ? formatBytes(resourceStats.memoryBytes) : 'Offline', running ? memPct : null, !running) +
+        resourceRow('storage', 'Disk', formatBytes(resourceStats.diskBytes), diskPct, false, diskSub) +
       '</div>';
+  }
+
+  /** e.g. 3905 -> "1h 5m 5s"; falls back to "—" when the OS didn't report one. */
+  function formatUptime(seconds) {
+    if (!Number.isFinite(seconds) || seconds < 0) return '—';
+    var h = Math.floor(seconds / 3600);
+    var m = Math.floor((seconds % 3600) / 60);
+    var s = Math.floor(seconds % 60);
+    if (h > 0) return h + 'h ' + m + 'm';
+    if (m > 0) return m + 'm ' + s + 's';
+    return s + 's';
   }
 
   // ─── The single debounced DOM pass ────────────────────────────
@@ -1313,6 +1504,7 @@
     renderBackupBox();
     addManageInstanceCards();
     removeModManagerCard();
+    addInstanceListAvatars();
     renderResourceUsage();
     renderSidebar();
     renderLimboBanner();
