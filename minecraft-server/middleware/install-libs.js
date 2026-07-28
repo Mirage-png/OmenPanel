@@ -35,11 +35,20 @@ const TARGET_DIRS = [
   path.resolve(__dirname, '..', 'mcsmanager', 'web', 'lib'),
 ];
 
+// No timeout here used to mean a single stalled connection to GitHub's
+// release CDN (not even a hard failure — just no response ever arriving)
+// blocked this function's caller forever, with no error and no completion.
+// Since ensureLibs() below awaits these sequentially and deploy-start.sh
+// runs this script before starting the daemon/web/middleware, that one
+// stuck download silently prevented the entire panel from ever coming up —
+// indistinguishable from the app being merely slow until this was found.
+const DOWNLOAD_TIMEOUT_MS = 20000;
+
 function download(url, dest) {
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(dest);
     const proto = url.startsWith('https') ? https : http;
-    proto.get(url, { headers: { 'User-Agent': 'OmenPanel/1.0' } }, (res) => {
+    const req = proto.get(url, { headers: { 'User-Agent': 'OmenPanel/1.0' } }, (res) => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         file.close();
         fs.unlinkSync(dest);
@@ -52,7 +61,11 @@ function download(url, dest) {
       }
       res.pipe(file);
       file.on('finish', () => { file.close(); resolve(); });
-    }).on('error', (err) => {
+    });
+    req.setTimeout(DOWNLOAD_TIMEOUT_MS, () => {
+      req.destroy(new Error(`timed out after ${DOWNLOAD_TIMEOUT_MS}ms`));
+    });
+    req.on('error', (err) => {
       file.close();
       try { fs.unlinkSync(dest); } catch {}
       reject(err);
