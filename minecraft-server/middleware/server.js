@@ -2074,7 +2074,11 @@ function startLogMonitor() {
     } catch (err) {
       console.error('[mineube] Log monitor error:', err.message);
     }
-  }, 5000);
+  }, 8000);  // was 5000 — this scans every running instance's log file on
+             // every tick, which is exactly the kind of extra filesystem I/O
+             // that shouldn't be competing with the JVM during its own
+             // startup on a CPU-constrained host. A few extra seconds before
+             // the Minekube address shows up costs nothing real.
 }
 
 // ═══ Start ═══

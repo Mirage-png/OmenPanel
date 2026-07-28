@@ -18,7 +18,10 @@ DAEMON_HEAP="${OMEN_DAEMON_HEAP_MB:-512}"
 WEB_HEAP="${OMEN_WEB_HEAP_MB:-512}"
 MIDDLEWARE_HEAP="${OMEN_MIDDLEWARE_HEAP_MB:-256}"
 ROUTER_HEAP="${OMEN_ROUTER_HEAP_MB:-128}"
-GC_FLAGS="--optimize-for-size --gc-interval=100 --max-semi-space-size=32"
+# See the matching comment in deploy-start.sh: --gc-interval and
+# --optimize-for-size trade CPU for memory, which is backwards for a
+# CPU-constrained host running a JVM alongside these 4 Node processes.
+GC_FLAGS="--max-semi-space-size=32"
 
 # Default admin credentials for bootstrapping (overridable via Replit Secrets)
 export OMEN_ADMIN_USERNAME="${OMEN_ADMIN_USERNAME:-admin}"

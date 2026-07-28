@@ -26,7 +26,19 @@ DAEMON_HEAP="${OMEN_DAEMON_HEAP_MB:-512}"
 WEB_HEAP="${OMEN_WEB_HEAP_MB:-512}"
 MIDDLEWARE_HEAP="${OMEN_MIDDLEWARE_HEAP_MB:-256}"
 ROUTER_HEAP="${OMEN_ROUTER_HEAP_MB:-128}"
-GC_FLAGS="--optimize-for-size --gc-interval=100 --max-semi-space-size=32"
+# --gc-interval=100 forces a full V8 GC every 100 allocations — a
+# stress-testing/debug flag, not a production one. It doesn't save memory so
+# much as guarantee GC runs far more often than V8's own adaptive heuristics
+# would choose, burning CPU on collection instead of letting it decide when
+# collection is actually needed. --optimize-for-size trades JIT execution
+# speed for smaller generated code, which also costs more CPU-time per unit
+# of work. Both were true "reduce memory" tradeoffs, but memory was never
+# actually the tight resource here (every process's reported usage was
+# comfortably under its heap cap) — CPU is, on a constrained single-vCPU
+# instance running a JVM alongside 4 Node processes, and dropping both of
+# these buys back CPU headroom at the cost of a slightly larger footprint
+# well within what's already available.
+GC_FLAGS="--max-semi-space-size=32"
 
 echo "Deploying OmenHosting..."
 
