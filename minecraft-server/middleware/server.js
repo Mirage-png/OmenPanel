@@ -75,7 +75,7 @@ const MINEKUBE_JAR_URL = 'https://github.com/minekube/connect-java/releases/down
 // web panel starts, since MCSManager loads its user list into memory once
 // at its own boot and won't see a file created after the fact. This call is
 // just a safety net for the (normal) case where that already ran.
-require('./bootstrap-admin')();
+require('./bootstrap-admin').bootstrap();
 
 // Ensure data directory exists
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
