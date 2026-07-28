@@ -36,8 +36,10 @@ install_if_needed() {
     # See the matching comment in deploy-start.sh: npm ci against
     # minecraft-server's own package-lock.json doesn't fail fast, it hangs on
     # slow .local mDNS resolution attempts against Replit's unreachable
-    # internal package firewall. Skip straight to --no-package-lock.
-    (cd "$dir" && npm install --no-package-lock --omit=dev --no-audit --no-fund 2>&1) | tail -20
+    # internal package firewall. Skip straight to --no-package-lock, and pin
+    # the real registry explicitly in case an inherited env var still points
+    # at the same unreachable host.
+    (cd "$dir" && npm install --no-package-lock --omit=dev --no-audit --no-fund --registry=https://registry.npmjs.org/ 2>&1) | tail -20
   fi
 }
 

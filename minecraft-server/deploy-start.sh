@@ -59,10 +59,15 @@ install_if_needed() {
     # slow mDNS resolution attempts before giving up, once per package, so
     # the "fails outright" assumption was wrong and it was actually just
     # slowly timing out on every single lookup before ever reaching the
-    # fallback. Going straight to --no-package-lock skips all of that: npm
-    # ignores the lockfile entirely and resolves fresh from the real
-    # registry, no poisoned URLs ever touched.
-    (cd "$dir" && npm install --no-package-lock --omit=dev --no-audit --no-fund 2>&1) | tail -20
+    # fallback. Going straight to --no-package-lock skips the *lockfile's*
+    # poisoned URLs, but not an inherited npm/yarn config: if a leftover env
+    # var like NPM_CONFIG_REGISTRY still points at the same unreachable host
+    # (carried over from a Replit-era Secret/env setting into this Render
+    # service), every install hangs identically regardless of the lockfile
+    # fix, with no error — indistinguishable from this being merely slow.
+    # --registry pins the real public registry explicitly, overriding any
+    # such inherited config so this can't happen silently again.
+    (cd "$dir" && npm install --no-package-lock --omit=dev --no-audit --no-fund --registry=https://registry.npmjs.org/ 2>&1) | tail -20
   fi
 }
 

@@ -4,7 +4,7 @@
   "private": true,
   "description": "PumpkinMC + MCSManager Minecraft server on Replit",
   "scripts": {
-    "build": "npm install --no-package-lock --omit=dev --no-audit --no-fund --prefix minecraft-server && npm install --no-package-lock --omit=dev --no-audit --no-fund --prefix minecraft-server/mcsmanager/daemon && npm install --no-package-lock --omit=dev --no-audit --no-fund --prefix minecraft-server/mcsmanager/web && node minecraft-server/middleware/install-libs.js",
+    "build": "npm install --no-package-lock --omit=dev --no-audit --no-fund --registry=https://registry.npmjs.org/ --prefix minecraft-server && npm install --no-package-lock --omit=dev --no-audit --no-fund --registry=https://registry.npmjs.org/ --prefix minecraft-server/mcsmanager/daemon && npm install --no-package-lock --omit=dev --no-audit --no-fund --registry=https://registry.npmjs.org/ --prefix minecraft-server/mcsmanager/web && node minecraft-server/middleware/install-libs.js",
     "start": "bash minecraft-server/deploy-start.sh"
   },
   "engines": {
