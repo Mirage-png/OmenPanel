@@ -15,9 +15,24 @@ localPort = 24444
 externalPort = 3000
 
 [deployment]
-build = ["sh", "-c", "cd minecraft-server && for d in . mcsmanager/daemon mcsmanager/web middleware; do if [ -f \"$d/package.json\" ]; then (cd \"$d\" && (npm ci --omit=dev --no-audit --no-fund || npm install --omit=dev --no-audit --no-fund)); fi; done; true"]
+# npm ci here used to be tried first, on the assumption it would fail fast
+# against minecraft-server/package-lock.json's URLs pinned to
+# package-firewall.replit.local if that mirror were ever unreachable. It
+# doesn't fail fast -- .local hostnames trigger slow mDNS resolution
+# attempts instead, hanging the whole build step (see the matching,
+# already-fixed comment in deploy-start.sh's own install_if_needed()). This
+# build command is a separate, older mechanism that predates that fix and
+# never got updated along with it, so it was still exposed to the same hang.
+build = ["sh", "-c", "cd minecraft-server && for d in . mcsmanager/daemon mcsmanager/web middleware; do if [ -f \"$d/package.json\" ]; then (cd \"$d\" && npm install --no-package-lock --omit=dev --no-audit --no-fund --registry=https://registry.npmjs.org/); fi; done; true"]
 run = ["sh", "-c", "cd minecraft-server && bash deploy-start.sh"]
-deploymentTarget = "cloudrun"
+# cloudrun is Replit's Autoscale target: it can run multiple separate
+# container instances behind a load balancer, and this app is entirely
+# stateful (accounts/sessions/worlds all live in local files/memory with
+# nothing shared across instances) -- see CLAUDE.md's own §6 for the live
+# proof (a signup account existed on one instance and not on another).
+# reservedvm is a single persistent machine, the only target this app can
+# actually work correctly on.
+deploymentTarget = "reservedvm"
 
 [nix]
 channel = "stable-25_05"
