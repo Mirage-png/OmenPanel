@@ -30,11 +30,11 @@ install_if_needed() {
   local dir="$1"
   if [ -f "$dir/package.json" ] && [ ! -d "$dir/node_modules" ]; then
     echo "  Installing deps in ${dir#$BASE_DIR/}..."
-    # See the matching comment in deploy-start.sh: minecraft-server's own
-    # package-lock.json pins resolved URLs against Replit's internal package
-    # firewall, unreachable anywhere else — --no-package-lock on the
-    # fallback install forces npm to ignore it and re-resolve for real.
-    (cd "$dir" && npm ci --omit=dev --no-audit --no-fund 2>&1 || npm install --no-package-lock --omit=dev --no-audit --no-fund 2>&1) | tail -20
+    # See the matching comment in deploy-start.sh: npm ci against
+    # minecraft-server's own package-lock.json doesn't fail fast, it hangs on
+    # slow .local mDNS resolution attempts against Replit's unreachable
+    # internal package firewall. Skip straight to --no-package-lock.
+    (cd "$dir" && npm install --no-package-lock --omit=dev --no-audit --no-fund 2>&1) | tail -20
   fi
 }
 
