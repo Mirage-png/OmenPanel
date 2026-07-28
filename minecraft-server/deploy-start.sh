@@ -40,7 +40,16 @@ install_if_needed() {
   local dir="$1"
   if [ -f "$dir/package.json" ] && [ ! -d "$dir/node_modules" ]; then
     echo "  Installing deps in ${dir#$BASE_DIR/}..."
-    (cd "$dir" && npm ci --omit=dev --no-audit --no-fund 2>&1 || npm install --omit=dev --no-audit --no-fund 2>&1) | tail -20
+    # minecraft-server/package-lock.json pins resolved URLs against
+    # package-firewall.replit.local, Replit's own internal registry mirror —
+    # unreachable on any other host. `npm ci` fails outright against it, and
+    # a plain `npm install` fallback still honors those pinned URLs for
+    # anything the lockfile already covers, so it hangs/fails the exact same
+    # way. --no-package-lock makes npm ignore the lockfile entirely and
+    # re-resolve everything from the real registry — the only combination
+    # that works both on Replit (where the firewall mirror exists) and
+    # everywhere else (where it doesn't).
+    (cd "$dir" && npm ci --omit=dev --no-audit --no-fund 2>&1 || npm install --no-package-lock --omit=dev --no-audit --no-fund 2>&1) | tail -20
   fi
 }
 
