@@ -19,13 +19,32 @@ export NODE_ENV=production
 export OMEN_ADMIN_USERNAME="${OMEN_ADMIN_USERNAME:-admin}"
 export OMEN_ADMIN_PASSWORD="${OMEN_ADMIN_PASSWORD:-OmenAdmin2026!}"
 
-# Heap sizes tuned to fit a 2GB Reserved VM with headroom left for the
-# Minecraft JVM itself (~512MB-1GB per running instance). Bump these via
-# env vars if the deployment is sized larger.
-DAEMON_HEAP="${OMEN_DAEMON_HEAP_MB:-512}"
-WEB_HEAP="${OMEN_WEB_HEAP_MB:-512}"
-MIDDLEWARE_HEAP="${OMEN_MIDDLEWARE_HEAP_MB:-256}"
-ROUTER_HEAP="${OMEN_ROUTER_HEAP_MB:-128}"
+if [ -n "${RENDER_EXTERNAL_HOSTNAME:-}" ]; then
+  # Render's free web-service tier gives 512MB RAM *total*. The 2GB-Reserved-
+  # VM defaults below would let these 4 Node processes alone request nearly
+  # 1.4GB of V8 heap ceiling between them -- before a Minecraft JVM even
+  # starts -- which is almost certainly why the panel was going down
+  # intermittently with no clear error in the logs: an OOM kill is silent
+  # and instant at the container level, indistinguishable from "randomly
+  # stops working" from the outside. These smaller defaults leave the panel
+  # itself (login, account management, the hosting UI) genuine headroom to
+  # stay up reliably; a real Minecraft JVM still needs 512MB-1GB of its own
+  # on top, which this plan's total RAM budget has essentially no room for
+  # regardless of how these are tuned -- that's a plan-size ceiling, not
+  # something fixable by adjusting these numbers further.
+  DAEMON_HEAP="${OMEN_DAEMON_HEAP_MB:-128}"
+  WEB_HEAP="${OMEN_WEB_HEAP_MB:-128}"
+  MIDDLEWARE_HEAP="${OMEN_MIDDLEWARE_HEAP_MB:-64}"
+  ROUTER_HEAP="${OMEN_ROUTER_HEAP_MB:-32}"
+else
+  # Tuned to fit a 2GB Reserved VM (Replit) with headroom left for the
+  # Minecraft JVM itself (~512MB-1GB per running instance). Bump these via
+  # env vars if the deployment is sized larger.
+  DAEMON_HEAP="${OMEN_DAEMON_HEAP_MB:-512}"
+  WEB_HEAP="${OMEN_WEB_HEAP_MB:-512}"
+  MIDDLEWARE_HEAP="${OMEN_MIDDLEWARE_HEAP_MB:-256}"
+  ROUTER_HEAP="${OMEN_ROUTER_HEAP_MB:-128}"
+fi
 # --gc-interval=100 forces a full V8 GC every 100 allocations — a
 # stress-testing/debug flag, not a production one. It doesn't save memory so
 # much as guarantee GC runs far more often than V8's own adaptive heuristics
