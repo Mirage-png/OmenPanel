@@ -191,6 +191,12 @@ This must be set as Render's **Build Command** (`npm run build`) in the dashboar
 
 **Fix:** both `deploy-start.sh` and `start.sh` now capture each install job's PID via `$!` right after backgrounding it, and call `wait $install_pids` on exactly those four — never touching the log streamers, which keep running for the container's lifetime as intended.
 
+### 21. Signup showing "Connection error" — two stacked timeout bugs, plus an unhelpful fallback body
+
+**Root cause:** `/api/omen/signup` routes through the router to MIDDLEWARE, and the middleware's own `handleSignup()` makes **two sequential** internal calls to the web panel via `webRequest()` (admin login, then create-user). `webRequest()` (`middleware/server.js`) had **no timeout at all** — the same class of bug already fixed twice elsewhere in this project (`install-libs.js`'s downloads, `s3.js`'s `list()`). Meanwhile the router's own proxy timeout for anything that isn't a daemon file-transfer was a flat 10 seconds (`web/index.js`) — nowhere near enough headroom for two un-timed internal hops on Render's CPU-constrained free tier. When the 10s router timeout fired first, it returned a plain-text 502 (`'Service starting...'`), which the signup modal's `fetch(...).then(r => r.json())` fails to parse, rejecting into its `.catch()` and showing the generic, unhelpful "Connection error" — regardless of what actually went wrong underneath.
+
+**Fix:** three changes in `minecraft-server/web/index.js` and `minecraft-server/middleware/server.js`: (1) `webRequest()` now has its own 12s timeout via `req.setTimeout()`, so one stuck hop can't hang the whole caller indefinitely; (2) the router's non-daemon proxy timeout raised from 10s to 45s, giving comfortable margin over two sequential 12s hops plus processing overhead; (3) the router's non-WEB fallback response is now valid JSON (`{error: '...'}`) instead of plain text, so any `fetch().then(r => r.json())` caller — signup, Network config, Backups, all of `inject.js`'s API calls — gets a real, parseable error instead of silently failing into a generic "Connection error" regardless of the actual cause.
+
 ### 19. Tried Northflank instead of Render; the abandoned Dockerfile had a real, reproducible bug
 
 Northflank has no native "just run a start command" Node runtime like Render's — every service is a container, so the previously-abandoned Docker path (see §16) came back into play, and its actual failure cause was finally found instead of staying a mystery.

@@ -283,6 +283,14 @@ function daemonRequest(method, path, body) {
   });
 }
 
+// Signup and a few other routes make two of these back-to-back (e.g. admin
+// login, then create-user) — this had no timeout at all, so a single stuck
+// connection to the web panel could hang the whole caller indefinitely. The
+// router's own proxy-to-middleware timeout (web/index.js) is the outer
+// bound; this one is deliberately shorter so a single slow hop fails on its
+// own terms instead of silently eating the whole outer budget.
+const WEB_REQUEST_TIMEOUT_MS = 12000;
+
 function webRequest(method, path, body, cookie) {
   return new Promise((resolve, reject) => {
     const opts = { hostname: '127.0.0.1', port: WEB_PORT, path, method, headers: { 'Content-Type': 'application/json', 'x-requested-with': 'xmlhttprequest' } };
@@ -299,6 +307,9 @@ function webRequest(method, path, body, cookie) {
         }
         try { resolve({ data: JSON.parse(data), status: res.statusCode, setCookie: cookieStr }); } catch { resolve({ data, status: res.statusCode, setCookie: cookieStr }); }
       });
+    });
+    req.setTimeout(WEB_REQUEST_TIMEOUT_MS, () => {
+      req.destroy(new Error(`webRequest to ${path} timed out after ${WEB_REQUEST_TIMEOUT_MS}ms`));
     });
     req.on('error', reject);
     if (body) req.write(JSON.stringify(body));
