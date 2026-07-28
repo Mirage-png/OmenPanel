@@ -160,6 +160,21 @@ The user ran out of Replit credits and moved hosting to Render's free tier. Seve
 
 **Fix:** `LOADING_PAGE` and the `/_omen/ready` endpoint it polled are both removed from `web/index.js`. In their place, `proxyRequest()` now retries the connection to the web panel *itself*, server-side, before ever responding to the browser — for GET/HEAD requests only (nothing else is safe to blindly retry, since a POST body's stream would already be consumed by an earlier attempt). Retries every 2s for up to 100s (`WEB_RETRY_INTERVAL_MS`/`WEB_RETRY_MAX_MS`, sized around the ~60-90s cold starts actually observed on Render's free tier), falling back to a plain 503 text response only once that window is exhausted. The visitor's browser sees nothing but its own native pending-navigation state (tab spinner) — the same thing it shows for any slow page load — right up until the real page is ready.
 
+### 18. "Taking forever to load" — dependency installs were happening at boot, not build time
+
+**Root cause:** confirmed directly from a live Render deploy log. Render auto-detected no explicit Build Command and defaulted to bare `yarn` at the repo root — which has no dependencies of its own, so it finished in `0.03s` and told nothing. The real installs (`minecraft-server`, `mcsmanager/daemon`, `mcsmanager/web` — three separate `package.json`s, confirmed by checking which directories actually have one; `middleware/` has none, and `install_if_needed()` already correctly skips it) were still happening **after** the router opened its port and Render marked the deploy "live," each running sequentially on the free tier's single shared vCPU before the actual web panel/daemon/middleware could even start listening. Reproduced live: hit the site directly and got back the exact 503 text `proxyRequest()`'s retry fallback serves once its 100-second window (§17) is exhausted — meaning a cold boot's install phase alone was taking longer than that.
+
+**Fix:** added a `"build"` script to the root `package.json`:
+```
+npm install --no-package-lock --omit=dev --no-audit --no-fund --prefix minecraft-server \
+  && npm install --no-package-lock --omit=dev --no-audit --no-fund --prefix minecraft-server/mcsmanager/daemon \
+  && npm install --no-package-lock --omit=dev --no-audit --no-fund --prefix minecraft-server/mcsmanager/web \
+  && node minecraft-server/middleware/install-libs.js
+```
+This must be set as Render's **Build Command** (`npm run build`) in the dashboard — overriding the auto-detected bare `yarn` — so it runs once during the build phase, before the app is ever marked live, rather than at every cold start. `deploy-start.sh`'s own `install_if_needed()` calls are unchanged and stay in place as a fallback (they already no-op via their `[ ! -d "$dir/node_modules" ]` check whenever the build step already installed everything, so local `start.sh` dev usage — which has no separate build phase — is unaffected). Verified locally end to end: ran `npm run build` from a clean state, confirmed all three subproject installs and `install-libs.js` complete successfully with no errors.
+
+**Action required, not yet confirmed done:** this only takes effect once the Render dashboard's Build Command field is actually changed from its current auto-detected `yarn` to `npm run build` — a manual dashboard setting outside this repo.
+
 ## Boot sequence (deploy-start.sh)
 
 1. Router starts (port 3000 — health check)
