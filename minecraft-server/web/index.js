@@ -1,7 +1,11 @@
 const http = require('http');
 const url = require('url');
 
-const PORT = process.env.PROXY_PORT || 3000;
+// PORT is the platform-standard var (Render, and most other PaaS hosts, pick
+// this up automatically and route external traffic to it); PROXY_PORT is
+// this app's own older/local-only override. Neither is set on Replit, which
+// instead maps a fixed external port to this app's own hardcoded default.
+const PORT = process.env.PORT || process.env.PROXY_PORT || 3000;
 const WEB = { host: '127.0.0.1', port: 23333 };
 const DAEMON = { host: '127.0.0.1', port: 24444 };
 const MIDDLEWARE = { host: '127.0.0.1', port: 29999 };

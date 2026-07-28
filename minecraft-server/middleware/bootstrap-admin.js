@@ -208,15 +208,18 @@ const DAEMON_UUID = 'omen-daemon-local';
  * is completely healthy.
  *
  * On Replit, REPLIT_DOMAINS gives the real public hostname (behind TLS, so
- * port 443 / wss). Locally there's no such domain, so map back to whatever
- * port the router itself is actually listening on.
+ * port 443 / wss). Render's equivalent is RENDER_EXTERNAL_HOSTNAME — same
+ * shape (behind TLS, port 443), just a different platform env var. Any other
+ * platform that terminates TLS in front of the app the same way needs the
+ * same treatment added here. Only truly local (nothing sets either var) maps
+ * back to whatever port the router itself is actually listening on.
  */
 function computeRemoteMappings() {
-  const replitDomain = (process.env.REPLIT_DOMAINS || '').split(',')[0].trim();
-  if (replitDomain) {
-    return [{ from: { ip: replitDomain, port: 443, prefix: '/' }, to: { ip: `wss://${replitDomain}`, port: 443, prefix: '' } }];
+  const publicDomain = (process.env.REPLIT_DOMAINS || process.env.RENDER_EXTERNAL_HOSTNAME || '').split(',')[0].trim();
+  if (publicDomain) {
+    return [{ from: { ip: publicDomain, port: 443, prefix: '/' }, to: { ip: `wss://${publicDomain}`, port: 443, prefix: '' } }];
   }
-  const port = Number(process.env.PROXY_PORT || 3000);
+  const port = Number(process.env.PORT || process.env.PROXY_PORT || 3000);
   return [{ from: { ip: '127.0.0.1', port, prefix: '/' }, to: { ip: 'ws://127.0.0.1', port, prefix: '' } }];
 }
 
