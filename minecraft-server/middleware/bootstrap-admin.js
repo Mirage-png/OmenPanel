@@ -209,13 +209,18 @@ const DAEMON_UUID = 'omen-daemon-local';
  *
  * On Replit, REPLIT_DOMAINS gives the real public hostname (behind TLS, so
  * port 443 / wss). Render's equivalent is RENDER_EXTERNAL_HOSTNAME — same
- * shape (behind TLS, port 443), just a different platform env var. Any other
- * platform that terminates TLS in front of the app the same way needs the
- * same treatment added here. Only truly local (nothing sets either var) maps
- * back to whatever port the router itself is actually listening on.
+ * shape (behind TLS, port 443), just a different platform env var.
+ * PUBLIC_HOSTNAME is the generic escape hatch for anything else that
+ * terminates TLS in front of the app the same way and doesn't inject its
+ * own recognizable env var — a cloudflared quick tunnel being the case this
+ * was actually added for: testing locally through a public trycloudflare.com
+ * URL, where nothing sets REPLIT_DOMAINS/RENDER_EXTERNAL_HOSTNAME, but
+ * 127.0.0.1 is still wrong for a browser connecting from that public
+ * hostname. Only truly local (nothing sets any of these) maps back to
+ * whatever port the router itself is actually listening on.
  */
 function computeRemoteMappings() {
-  const publicDomain = (process.env.REPLIT_DOMAINS || process.env.RENDER_EXTERNAL_HOSTNAME || '').split(',')[0].trim();
+  const publicDomain = (process.env.REPLIT_DOMAINS || process.env.RENDER_EXTERNAL_HOSTNAME || process.env.PUBLIC_HOSTNAME || '').split(',')[0].trim();
   if (publicDomain) {
     return [{ from: { ip: publicDomain, port: 443, prefix: '/' }, to: { ip: `wss://${publicDomain}`, port: 443, prefix: '' } }];
   }
@@ -273,6 +278,54 @@ function ensureDaemonRemoteConfig() {
   }
 }
 
+/**
+ * Each InstanceConfig file stores an *absolute* `cwd` for that instance's
+ * working directory — correct for whatever machine it was created on, but
+ * this repo moves between Replit, Render, and local dev constantly (see
+ * CLAUDE.md), each with a completely different absolute base path. A config
+ * carried over from one environment into another (a state-sync S3/B2
+ * restore, or just copying the repo) points at a `cwd` that doesn't exist
+ * here at all — surfacing as a confusing `ENOENT: no such file or directory,
+ * mkdir '/home/runner'`-style error the moment MCSManager tries to start it,
+ * with nothing indicating what's actually wrong. Must run before mcsm-daemon
+ * starts — same reason as everything else here: it loads InstanceConfig once
+ * at its own boot and never re-reads it, so fixing the file afterward would
+ * leave the correction invisible until a second restart.
+ */
+function ensureInstanceConfigPaths() {
+  const dir = path.join(BASE_DIR, 'mcsmanager/daemon/data/InstanceConfig');
+  let files;
+  try { files = fs.readdirSync(dir); } catch { return; }
+
+  let fixed = 0;
+  for (const file of files) {
+    if (!file.endsWith('.json')) continue;
+    const uuid = file.slice(0, -'.json'.length);
+    // The special global instance config (cwd: "/") isn't a real per-
+    // instance directory — leave it alone.
+    if (uuid === 'global0001') continue;
+
+    const filePath = path.join(dir, file);
+    let cfg;
+    try { cfg = JSON.parse(fs.readFileSync(filePath, 'utf8')); } catch { continue; }
+    if (!cfg.cwd) continue;
+
+    const expected = path.join(BASE_DIR, 'mcsmanager/daemon/data/InstanceData', uuid);
+    if (cfg.cwd === expected) continue;
+
+    cfg.cwd = expected;
+    try {
+      fs.writeFileSync(filePath, JSON.stringify(cfg, null, 4));
+      fixed++;
+    } catch (err) {
+      console.error(`[bootstrap] Failed to fix cwd for instance ${uuid}:`, err.message);
+    }
+  }
+  if (fixed > 0) {
+    console.log(`[bootstrap] Corrected stale cwd path in ${fixed} instance config(s) for this environment.`);
+  }
+}
+
 function bootstrap() {
   ensureStableSessionKey();
   ensureReverseProxyConfig();
@@ -283,5 +336,5 @@ function bootstrap() {
 if (require.main === module) {
   bootstrap();
 } else {
-  module.exports = bootstrap;
+  module.exports = { bootstrap, ensureInstanceConfigPaths };
 }
