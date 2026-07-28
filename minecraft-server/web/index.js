@@ -16,25 +16,23 @@ const THEME_LINK = `<link rel="stylesheet" href="/api/omen/theme.css">`;
 const INJECT_SCRIPT = THEME_LINK + `<script defer src="/api/omen/inject.js"></script>`;
 
 /**
- * Shown only when the web panel backend can't be reached (still booting, or
- * this container is mid-cold-start on an Autoscale deployment). This used to
- * be a `<meta http-equiv="refresh" content="2">` — a blind full-page reload
- * every 2 seconds regardless of whether the backend was actually up yet,
- * which is exactly the kind of thing that produces a visible flash of
- * whatever half-loaded response comes back on an attempt that happens to hit
- * a backend that's *just* starting to accept connections. It's replaced with
- * a background poll against /_omen/ready (this router's own lightweight
- * check — see below) that only navigates once the backend has actually
- * confirmed it's accepting connections, instead of reloading on a blind timer.
+ * Cold-start handling has gone through two versions before this one, in the
+ * same direction each time — less visible machinery, not more:
+ *   1. A `<meta http-equiv="refresh" content="2">` — a blind full-page reload
+ *      every 2 seconds regardless of whether the backend was actually up.
+ *   2. A branded "Loading panel..." page whose own client-side script polled
+ *      /_omen/ready and reloaded once the backend answered — no more blind
+ *      reloading, but still a visible custom page in between.
+ * This version shows nothing at all: proxyRequest() below silently retries
+ * the connection to the web panel server-side, for a GET/HEAD request, before
+ * ever sending a response back to the browser. The visitor's browser just
+ * shows its own native "waiting for omenpanel.onrender.com..." state — the
+ * same thing it always shows for a slow page load — right up until the real
+ * page is ready, then gets that real page directly. No separate screen, no
+ * client-side polling loop, nothing to dislike the look of.
  */
-const LOADING_PAGE = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Loading...</title><style>body{background:#0b0e14;color:#2ecc71;font-family:sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;font-size:20px}</style></head><body>Loading panel...<script>
-(function poll() {
-  fetch('/_omen/ready', { cache: 'no-store' })
-    .then(function (r) { return r.json(); })
-    .then(function (data) { if (data && data.ready) location.reload(); else setTimeout(poll, 1000); })
-    .catch(function () { setTimeout(poll, 1000); });
-})();
-</script></body></html>`;
+const WEB_RETRY_MAX_MS = 100000;   // covers the ~60-90s cold starts actually observed
+const WEB_RETRY_INTERVAL_MS = 2000;
 
 /**
  * Number of proxies the hosting platform puts between the visitor and this
@@ -90,7 +88,15 @@ function getBackend(path) {
  *   their instance UUIDs can be inspected, which consumes the stream — those
  *   bytes are replayed here instead of piping.
  */
-function proxyRequest(req, res, target, body) {
+function proxyRequest(req, res, target, body, retryState) {
+  // Only a GET/HEAD to the web panel is safe to silently retry — there's no
+  // request body to worry about re-sending, and it's the actual scenario
+  // that matters (a visitor's browser loading the page while the backend is
+  // still cold). Anything else (a POST while cold, or the daemon/middleware
+  // not answering) falls back to an immediate plain response, same as before.
+  const canRetry = target === WEB && (req.method === 'GET' || req.method === 'HEAD') && body === undefined;
+  if (canRetry && !retryState) retryState = { startedAt: Date.now() };
+
   // X-Real-IP is always overwritten, never forwarded from the client, so a
   // visitor cannot forge it to dodge (or poison) the panel's per-IP ban.
   const headers = {
@@ -121,6 +127,21 @@ function proxyRequest(req, res, target, body) {
     headers,
     timeout: isDaemonTransfer ? 600000 : 10000
   };
+
+  function handleFailure() {
+    if (res.headersSent) return;
+    if (canRetry && Date.now() - retryState.startedAt < WEB_RETRY_MAX_MS) {
+      setTimeout(() => proxyRequest(req, res, target, body, retryState), WEB_RETRY_INTERVAL_MS);
+      return;
+    }
+    if (target === WEB) {
+      res.writeHead(503, { 'Content-Type': 'text/plain' });
+      res.end('The panel is taking longer than usual to start. Please try again shortly.');
+    } else {
+      res.writeHead(502);
+      res.end('Service starting...');
+    }
+  }
 
   const proxy = http.request(opts, (upstream) => {
     // Inject script into HTML responses. Compressed bodies are passed straight
@@ -158,29 +179,17 @@ function proxyRequest(req, res, target, body) {
     }
   });
 
-  proxy.on('error', () => {
-    if (!res.headersSent) {
-      if (target === WEB) {
-        res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end(LOADING_PAGE);
-      } else {
-        res.writeHead(502);
-        res.end('Service starting...');
-      }
-    }
-  });
-
-  proxy.on('timeout', () => {
-    proxy.destroy();
-    if (!res.headersSent && target === WEB) {
-      res.writeHead(200, { 'Content-Type': 'text/html' });
-      res.end(LOADING_PAGE);
-    }
-  });
+  proxy.on('error', handleFailure);
+  proxy.on('timeout', () => { proxy.destroy(); handleFailure(); });
 
   if (body !== undefined) {
     // Stream already drained by the start-request inspection.
     if (body.length) proxy.write(body);
+    proxy.end();
+  } else if (canRetry) {
+    // A GET/HEAD has no body to send — end immediately rather than piping
+    // req, so a retry never has to worry about req's stream already having
+    // been consumed by an earlier attempt.
     proxy.end();
   } else {
     req.pipe(proxy, { end: true });
@@ -292,32 +301,6 @@ const server = http.createServer((req, res) => {
   if (parsed.pathname === '/health') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('OK');
-    return;
-  }
-
-  // Polled by LOADING_PAGE's client-side script. Distinct from /health above:
-  // that one is this router's own liveness (always OK, since Cloud Run/Replit
-  // probe it to decide whether to keep the container at all); this one asks
-  // whether the actual web panel backend is accepting connections yet, which
-  // is what the loading page is actually waiting on.
-  if (parsed.pathname === '/_omen/ready') {
-    const probe = http.request({
-      hostname: WEB.host, port: WEB.port, path: '/', method: 'HEAD', timeout: 2000
-    }, (probeRes) => {
-      probeRes.resume();
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ready: true }));
-    });
-    probe.on('error', () => {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ready: false }));
-    });
-    probe.on('timeout', () => {
-      probe.destroy();
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ready: false }));
-    });
-    probe.end();
     return;
   }
 
