@@ -24,6 +24,14 @@ const { URL } = require('url');
 const { StorageProvider } = require('./provider');
 
 const REQUEST_TIMEOUT = 300000;
+// list() is metadata-only (used by init()'s own connectivity check, and the
+// comment there already promises "fails fast") -- it has no business sharing
+// REQUEST_TIMEOUT with actual file transfers. Before this fix it did: a
+// misconfigured/unreachable endpoint (not a hard refusal, just no response)
+// meant init() could sit for the full 5 minutes before restoreState() ever
+// gave up, and restore-state.js runs before the daemon even starts -- long
+// enough alone to make deploy-start.sh look permanently hung from outside.
+const LIST_TIMEOUT = 15000;
 const CONNECT_ATTEMPT_TIMEOUT = 30000;
 const MAX_ATTEMPTS = 4;
 const UNSIGNED_PAYLOAD = 'UNSIGNED-PAYLOAD';
@@ -355,7 +363,7 @@ class S3Provider extends StorageProvider {
       };
       if (continuationToken) query['continuation-token'] = continuationToken;
 
-      const opts = this.sign({ method: 'GET', key: '', query, payloadHash: S3Provider.sha256Hex('') });
+      const opts = { ...this.sign({ method: 'GET', key: '', query, payloadHash: S3Provider.sha256Hex('') }), timeout: LIST_TIMEOUT };
       const res = await this.withRetry(() => this.httpRequest(opts), 'ListObjectsV2');
 
       if (res.status === 404) return [];
