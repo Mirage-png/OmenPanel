@@ -1206,7 +1206,17 @@ function handleCreateServer(req, res, body) {
 
     const instanceConfig = {
       nickname: name,
-      startCommand: '{mcsm_java} -Xms256M -Xmx512M -jar server.jar nogui',
+      // On a 512MB-total host (Render's free tier) this JVM is sharing the
+      // box with 4 Node processes that alone realistically use 250-400MB —
+      // -Xmx512M for the JVM's own heap on top of that guarantees an OOM
+      // kill before even counting the JVM's own off-heap overhead (metaspace,
+      // thread stacks, native buffers, typically another 100-200MB by
+      // itself). 384M gives it a fighting chance instead of a certainty of
+      // failure, but this is still fundamentally tight for modern Minecraft
+      // server software — there is no startCommand value that reliably fits
+      // a real Minecraft server alongside this panel in 512MB total; that's
+      // a host RAM ceiling, not something fixable here (see CLAUDE.md §22).
+      startCommand: '{mcsm_java} -Xms192M -Xmx384M -jar server.jar nogui',
       stopCommand: 'stop',
       stopTimeout: 0,
       ie: 'utf-8',
